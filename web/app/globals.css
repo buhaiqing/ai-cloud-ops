@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light dark;
+}
+
+html, body { height: 100%; }
+body { @apply bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100; }
+
+/* Mobile-first: tables wrap nicely under 768px */
+.table-wrap { @apply overflow-x-auto; }
+table.dash { @apply min-w-full text-sm; }
+table.dash th { @apply px-3 py-2 text-left font-medium text-gray-600 dark:text-gray-300 border-b; }
+table.dash td { @apply px-3 py-2 border-b border-gray-100 dark:border-gray-800; }
+.severity-pill { @apply inline-block rounded px-2 py-0.5 text-xs font-semibold text-white; }

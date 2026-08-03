@@ -21,8 +21,8 @@ type CIGateResult struct {
 const WarnFloor = 17
 
 // EvaluateBaseline scores every sample with judge, then classifies pass/warn/fail.
-// It calls agent.NewClient().Diagnose() per sample; tests inject behavior via
-// either a Judge mock or by replacing the agent package. The first judge
+// It calls agent.NewClient(...).Diagnose(...) per sample; tests inject behavior
+// via either a Judge mock or by replacing the agent package. The first judge
 // error short-circuits with (result, err).
 //
 // Ponytail: no configurability on the bucketing — the task locks 18/17 numbers.
@@ -32,10 +32,15 @@ func EvaluateBaseline(ctx context.Context, judge *Judge, samples []Sample) (CIGa
 		res.Fail = true
 		return res, nil
 	}
-	client := agent.NewClient("")
+	client := agent.NewClient("", "", nil)
 	var sum int
 	for i, s := range samples {
-		diagnosis := client.Diagnose(s.AlertPayload)
+		diagnosis, err := client.Diagnose(ctx, s.AlertPayload)
+		if err != nil {
+			res.Fail = true
+			res.Mean = avg(sum, i+1)
+			return res, err
+		}
 		card, err := judge.Score(ctx, s.AlertPayload, diagnosis)
 		if err != nil {
 			res.Fail = true
@@ -64,8 +69,9 @@ func avg(sum, n int) float64 { return float64(sum) / float64(n) }
 // route through the production agent.
 func PlaceholderDiagnosis(id string) *agent.Diagnosis {
 	return &agent.Diagnosis{
-		RootCause:      "synthetic",
-		Recommendation: "synthetic",
-		AlertID:        id,
+		RootCause: "synthetic for " + id,
+		Recommendations: []agent.Recommendation{
+			{Action: "synthetic action"},
+		},
 	}
 }
