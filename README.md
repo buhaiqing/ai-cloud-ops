@@ -31,6 +31,42 @@ docker compose up -d
 uv run ai-cloud-ops analyze --account my-account --region cn-hangzhou
 ```
 
+## MCP Server（REVIEW-3 / post-M1 checkpoint）
+
+除了 Web Dashboard（Milestone 2），项目也支持 MCP 协议——你可以在 Claude Desktop / Cline / Cursor 里直接对话操作阿里云资源。
+
+```bash
+# 启动 MCP server (stdio transport)
+uv run ai-cloud-ops-mcp
+```
+
+然后在 Claude Desktop 配置里加：
+
+```json
+{
+  "mcpServers": {
+    "ai-cloud-ops": {
+      "command": "uv",
+      "args": ["--directory", "/path/to/ai-cloud-ops", "run", "ai-cloud-ops-mcp"],
+      "env": {"ALIYUN_ACCESS_KEY_ID": "...", "ANTHROPIC_API_KEY": "..."}
+    }
+  }
+}
+```
+
+可用工具：
+
+| 工具 | 用途 |
+|---|---|
+| `diagnose_alert(alert_id, region, account_alias)` | AI Agent 诊断告警 |
+| `list_recent_alerts(region, account_alias, hours_back)` | 查询最近告警 |
+| `describe_ecs_instances(region, account_alias)` | 列出 ECS |
+| `describe_rds_instances(region, account_alias)` | 列出 RDS |
+| `describe_slb_load_balancers(region, account_alias)` | 列出 SLB |
+| `list_accounts()` | 显示已配置账号 |
+
+**A/B test**：M2 是继续做 Next.js Dashboard，还是把 MCP 作为主要界面？这个选择会基于早期用户的反馈决定。详见 [`TODOS.md`](./TODOS.md) § M4-12。
+
 ## 关键技术决策
 
 | 维度 | 选择 | 来源 |

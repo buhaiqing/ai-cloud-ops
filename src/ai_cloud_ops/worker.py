@@ -7,10 +7,9 @@ import logging
 import os
 import signal
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
-from typing import Any
 
 from sqlalchemy import text
 
@@ -119,7 +118,7 @@ class AlertWorker:
                     if not retry_result.succeeded:
                         errors += 1
                         continue
-                    now = datetime.now(timezone.utc)
+                    now = datetime.now(UTC)
                     await session.execute(
                         _UPDATE_STATUS,
                         {"id": alert["id"], "created_at": alert["created_at"], "updated_at": now},
@@ -134,7 +133,7 @@ class AlertWorker:
 
             await session.execute(
                 _UPSERT_HEARTBEAT,
-                {"worker_id": "alert-worker", "heartbeat_at": datetime.now(timezone.utc)},
+                {"worker_id": "alert-worker", "heartbeat_at": datetime.now(UTC)},
             )
             await session.commit()
 

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from collections.abc import AsyncIterator, Callable
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -30,13 +31,15 @@ def _config() -> Config:
     )
 
 
-def _session_context(rows: list[dict]) -> tuple[MagicMock, object]:
+def _session_context(
+    rows: list[dict],
+) -> tuple[MagicMock, Callable[[], AbstractAsyncContextManager[MagicMock]]]:
     session = MagicMock()
     session.execute = AsyncMock(side_effect=[_Result(rows), MagicMock(), MagicMock(), MagicMock()])
     session.commit = AsyncMock()
 
     @asynccontextmanager
-    async def context():
+    async def context() -> AsyncIterator[MagicMock]:
         yield session
 
     return session, context
@@ -45,8 +48,8 @@ def _session_context(rows: list[dict]) -> tuple[MagicMock, object]:
 @pytest.mark.asyncio
 async def test_process_one_cycle_diagnoses_each_alert() -> None:
     alerts = [
-        {"id": 1, "created_at": datetime.now(timezone.utc), "alert_id": "a-1"},
-        {"id": 2, "created_at": datetime.now(timezone.utc), "alert_id": "a-2"},
+        {"id": 1, "created_at": datetime.now(UTC), "alert_id": "a-1"},
+        {"id": 2, "created_at": datetime.now(UTC), "alert_id": "a-2"},
     ]
     session, context = _session_context(alerts)
     diagnose_mock = AsyncMock()

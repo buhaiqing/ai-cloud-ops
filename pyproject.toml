@@ -33,6 +33,8 @@ dependencies = [
     # CLI
     "typer>=0.15",
     "rich>=13.9",
+    # MCP server (REVIEW-3 — checkpoint after M1)
+    "mcp[cli]>=1.0",
 ]
 
 [project.optional-dependencies]
@@ -47,6 +49,7 @@ dev = [
 
 [project.scripts]
 ai-cloud-ops = "ai_cloud_ops.cli:main"
+ai-cloud-ops-mcp = "ai_cloud_ops.mcp_server:main"
 
 [build-system]
 requires = ["hatchling"]
