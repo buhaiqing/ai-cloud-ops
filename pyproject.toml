@@ -1,0 +1,73 @@
+[project]
+name = "ai-cloud-ops"
+version = "0.1.0"
+description = "AI-Native Alibaba Cloud Multi-Account Ops Console"
+authors = [{ name = "buhaiqing" }]
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+
+dependencies = [
+    # Web framework
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    # Alibaba Cloud SDK
+    "alibabacloud_credentials>=0.3.7",
+    "alibabacloud_sts20150401>=1.4.1",
+    "alibabacloud_cms20190101>=6.4.0",
+    "alibabacloud_ecs20140526>=4.2.0",
+    "alibabacloud_rds20140815>=3.2.0",
+    # LLM
+    "anthropic>=0.39.0",
+    # Data
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.30",
+    "redis[hiredis]>=5.2",
+    "alembic>=1.14",
+    # Reliability
+    "tenacity>=9.0",
+    "prometheus-client>=0.21",
+    "structlog>=24.4",
+    # CLI
+    "typer>=0.15",
+    "rich>=13.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+    "ruff>=0.7",
+    "mypy>=1.13",
+    "respx>=0.21",  # Mock httpx for Aliyun SDK tests
+]
+
+[project.scripts]
+ai-cloud-ops = "ai_cloud_ops.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ai_cloud_ops"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "ASYNC"]
+ignore = ["S101"]  # Allow assert in tests
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "integration: marks tests as integration (deselect with '-m \"not integration\"')",
+    "e2e: marks tests as end-to-end",
+    "eval: marks tests as AI prompt eval",
+]

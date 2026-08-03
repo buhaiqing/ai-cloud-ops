@@ -111,7 +111,7 @@ ipython_config.py
 # pdm
 #   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.
 #   pdm recommends including project-wide configuration in pdm.toml, but excluding .pdm-python.
-#   https://pdm-project.org/en/latest/usage/project/#working-with-version-control
+#   https://pdm-project.com/en/latest/usage/project/#working-with-version-control
 # pdm.lock
 # pdm.toml
 .pdm-python
@@ -195,9 +195,9 @@ cython_debug/
 .abstra/
 
 # Visual Studio Code
-#   Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore 
+#   Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore
 #   that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
-#   and can be added to the global gitignore or merged into this file. However, if you prefer, 
+#   and can be added to the global gitignore or merged into this file. However, if you prefer,
 #   you could uncomment the following to ignore the entire vscode folder
 # .vscode/
 # Temporary file for partial code execution
@@ -216,3 +216,34 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Tool state
+.omc/
+.gstack/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Secrets — DO NOT commit
+.env
+.envrc
+secrets.yaml
+secrets.json
+*.pem
+*.key
+
+# Coverage reports
+coverage.xml
