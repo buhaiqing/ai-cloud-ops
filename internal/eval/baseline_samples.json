@@ -1,0 +1,228 @@
+{
+  "_comment": "AI 诊断基线样本集（T13）。Ported from tests/eval/baseline_samples.json (Python). Each sample is a typical Aliyun alert scenario; Judge evaluates AI output on the 5-dim scorecard (root cause accuracy, recommendation executability, evidence chain completeness, hallucination rate, response time). Modifications must keep baseline score >= 18/25 per tests in internal/eval/.",
+  "version": "0.1.0",
+  "samples": [
+    {
+      "id": "ecs-cpu-high-01",
+      "category": "ECS",
+      "difficulty": "easy",
+      "alert_payload": {
+        "alert_id": "alert-001",
+        "alert_name": "ECS_CPU_High",
+        "severity": "warning",
+        "resource_id": "i-bp1xxxxxxxxxx",
+        "region": "cn-hangzhou",
+        "metric": {
+          "namespace": "acs_ecs",
+          "metric_name": "CPUUtilization",
+          "value": 96.5,
+          "threshold": 90.0,
+          "duration_minutes": 15
+        },
+        "tags": {"env": "prod", "service": "api-gateway"}
+      },
+      "expected_root_cause_keywords": ["CPU", "持续", "高负载"],
+      "expected_recommendation_type": "restart_or_scale",
+      "scoring_notes": "简单场景，AI 应能直接定位 CPU 持续高位并给出重启/扩容建议"
+    },
+    {
+      "id": "rds-connection-saturation-02",
+      "category": "RDS",
+      "difficulty": "easy",
+      "alert_payload": {
+        "alert_id": "alert-002",
+        "alert_name": "RDS_Connections_High",
+        "severity": "critical",
+        "resource_id": "rm-bp1xxxxxxxxxx",
+        "region": "cn-hangzhou",
+        "metric": {
+          "namespace": "acs_rds",
+          "metric_name": "ConnectionUsage",
+          "value": 99.2,
+          "threshold": 80.0,
+          "duration_minutes": 5
+        },
+        "tags": {"env": "prod", "service": "order-db"}
+      },
+      "expected_root_cause_keywords": ["连接数", "max_connections", "满"],
+      "expected_recommendation_type": "kill_long_query_or_scale",
+      "scoring_notes": "应识别连接数饱和，建议 kill 长查询或升级实例规格"
+    },
+    {
+      "id": "slb-5xx-spike-03",
+      "category": "SLB",
+      "difficulty": "medium",
+      "alert_payload": {
+        "alert_id": "alert-003",
+        "alert_name": "SLB_5XX_Rate_High",
+        "severity": "warning",
+        "resource_id": "lb-bp1xxxxxxxxxx",
+        "region": "cn-hangzhou",
+        "metric": {
+          "namespace": "acs_slb",
+          "metric_name": "Upstream5xxRate",
+          "value": 12.5,
+          "threshold": 5.0,
+          "duration_minutes": 3
+        },
+        "tags": {"env": "prod", "tier": "frontend"}
+      },
+      "expected_root_cause_keywords": ["backend", "ECS", "健康检查", "失败"],
+      "expected_recommendation_type": "check_backend_health",
+      "scoring_notes": "需要关联 ECS 健康检查状态，不能只看 SLB 5xx rate"
+    },
+    {
+      "id": "ecs-down-04",
+      "category": "ECS",
+      "difficulty": "medium",
+      "alert_payload": {
+        "alert_id": "alert-004",
+        "alert_name": "ECS_Instance_Status_Change",
+        "severity": "critical",
+        "resource_id": "i-bp1xxxxxxxxxx",
+        "region": "cn-hangzhou",
+        "metric": {
+          "namespace": "acs_ecs",
+          "metric_name": "InstanceStatus",
+          "value": "Stopped",
+          "previous": "Running"
+        },
+        "tags": {"env": "prod", "service": "worker"}
+      },
+      "expected_root_cause_keywords": ["实例状态", "Stopped", "异常停止"],
+      "expected_recommendation_type": "start_or_migrate",
+      "scoring_notes": "应区分计划内维护 vs 异常停止，建议启动或迁移"
+    },
+    {
+      "id": "disk-full-05",
+      "category": "ECS",
+      "difficulty": "easy",
+      "alert_payload": {
+        "alert_id": "alert-005",
+        "alert_name": "ECS_Disk_Usage_High",
+        "severity": "warning",
+        "resource_id": "i-bp1xxxxxxxxxx",
+        "region": "cn-hangzhou",
+        "metric": {
+          "namespace": "acs_ecs",
+          "metric_name": "DiskUsage",
+          "value": 96.0,
+          "threshold": 90.0,
+          "path": "/data"
+        }
+      },
+      "expected_root_cause_keywords": ["磁盘", "使用率", "高"],
+      "expected_recommendation_type": "cleanup_or_expand",
+      "scoring_notes": "应给出具体的清理路径建议（/data 下的日志），而不是通用建议"
+    },
+    {
+      "id": "network-packet-loss-06",
+      "category": "Network",
+      "difficulty": "hard",
+      "alert_payload": {
+        "alert_id": "alert-006",
+        "alert_name": "VPC_Packet_Loss",
+        "severity": "warning",
+        "resource_id": "vpc-bp1xxxxxxxxxx",
+        "region": "cn-hangzhou",
+        "metric": {
+          "namespace": "acs_vpc",
+          "metric_name": "PacketLossRate",
+          "value": 2.5,
+          "threshold": 1.0,
+          "duration_minutes": 20
+        },
+        "tags": {"env": "prod"}
+      },
+      "expected_root_cause_keywords": ["路由", "安全组", "变更", "最近"],
+      "expected_recommendation_type": "check_recent_changes",
+      "scoring_notes": "网络丢包根因最难——需要关联 ActionTrail 最近变更（这是 M3 TODO）"
+    },
+    {
+      "id": "rds-slow-query-07",
+      "category": "RDS",
+      "difficulty": "medium",
+      "alert_payload": {
+        "alert_id": "alert-007",
+        "alert_name": "RDS_Slow_Query_Surge",
+        "severity": "warning",
+        "resource_id": "rm-bp1xxxxxxxxxx",
+        "region": "cn-hangzhou",
+        "metric": {
+          "namespace": "acs_rds",
+          "metric_name": "SlowQueries",
+          "value": 145,
+          "threshold": 50,
+          "duration_minutes": 10
+        }
+      },
+      "expected_root_cause_keywords": ["全表扫描", "索引", "缺失"],
+      "expected_recommendation_type": "add_index_or_kill_query",
+      "scoring_notes": "应建议看慢查询日志、添加索引、kill 长查询"
+    },
+    {
+      "id": "oss-403-08",
+      "category": "OSS",
+      "difficulty": "medium",
+      "alert_payload": {
+        "alert_id": "alert-008",
+        "alert_name": "OSS_403_Burst",
+        "severity": "warning",
+        "resource_id": "oss-bucket-prod-logs",
+        "region": "cn-hangzhou",
+        "metric": {
+          "namespace": "acs_oss",
+          "metric_name": "403ErrorRate",
+          "value": 8.5,
+          "threshold": 1.0
+        }
+      },
+      "expected_root_cause_keywords": ["RAM", "权限", "凭证", "过期"],
+      "expected_recommendation_type": "check_iam_policy",
+      "scoring_notes": "应关联到 RAM 策略或 AccessKey 状态"
+    },
+    {
+      "id": "multi-ecs-correlation-09",
+      "category": "Multi-Resource",
+      "difficulty": "hard",
+      "alert_payload": {
+        "alert_id": "alert-009",
+        "alert_name": "ECS_Memory_High_Fleet",
+        "severity": "critical",
+        "resource_ids": ["i-bp1a", "i-bp1b", "i-bp1c"],
+        "region": "cn-hangzhou",
+        "metric": {
+          "namespace": "acs_ecs",
+          "metric_name": "MemoryUtilization",
+          "value_range": "85-92%",
+          "fleet": "shared-dependency"
+        },
+        "tags": {"env": "prod", "shared_dep": "rds-primary"}
+      },
+      "expected_root_cause_keywords": ["共享依赖", "RDS", "故障"],
+      "expected_recommendation_type": "check_shared_dependency",
+      "scoring_notes": "多个 ECS 同步告警 = 不是单点问题；应识别共享依赖"
+    },
+    {
+      "id": "false-positive-noop-10",
+      "category": "Edge Case",
+      "difficulty": "easy",
+      "alert_payload": {
+        "alert_id": "alert-010",
+        "alert_name": "Custom_Business_KPI_Drop",
+        "severity": "info",
+        "resource_id": "dashboard-fluctuating",
+        "region": "cn-hangzhou",
+        "metric": {
+          "namespace": "custom",
+          "metric_name": "OrderCount",
+          "value_drop_pct": 15.0,
+          "expected_range": "±30%"
+        }
+      },
+      "expected_root_cause_keywords": ["无明确", "波动", "正常范围"],
+      "expected_recommendation_type": "suppress_or_silence",
+      "scoring_notes": "AI 应识别这是正常波动，建议抑制而非触发运维响应——这是考验 AI 不滥报"
+    }
+  ]
+}

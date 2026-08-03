@@ -146,9 +146,7 @@ func (w *Worker) Run(ctx context.Context) {
 		timer := time.NewTimer(interval)
 		select {
 		case <-ctx.Done():
-			if !timer.Stop() {
-				<-timer.C
-			}
+			timer.Stop()
 			return
 		case <-timer.C:
 		}
