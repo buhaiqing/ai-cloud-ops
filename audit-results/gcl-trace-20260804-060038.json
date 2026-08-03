@@ -1,66 +1,61 @@
 {
-  "task": "M2 — Web Dashboard MVP (10 sub-tasks)",
-  "task_type": "full_stack_web_app",
-  "complexity": 30,
-  "risk": 3,
-  "count": 10,
-  "strategy": "phased_workflow+gcl_batch",
-  "concurrency": 2,
-  "rationale": "M2 has 10 independent sub-tasks across frontend/backend/realtime/auth. complexity>10 mandates phased_workflow. risk>=3 (auth/security) mandates serial safety. Within each phase, independent tasks run as parallel GCL batches.",
-  "phases": [
-    {
-      "phase": 1,
-      "title": "Foundation — Next.js scaffold + REST API",
-      "tasks": ["M2-1", "M2-7"],
-      "mode": "parallel_gcl",
-      "concurrency": 2
-    },
-    {
-      "phase": 2,
-      "title": "Read-only UI + Auth",
-      "tasks": ["M2-2", "M2-3", "M2-5"],
-      "mode": "parallel_gcl",
-      "concurrency": 2
-    },
-    {
-      "phase": 3,
-      "title": "Mutations — Rules CRUD + Incident lifecycle",
-      "tasks": ["M2-4", "M2-6"],
-      "mode": "parallel_gcl",
-      "concurrency": 2
-    },
-    {
-      "phase": 4,
-      "title": "Real-time + Stats + Polish",
-      "tasks": ["M2-8", "M2-9", "M2-10"],
-      "mode": "parallel_gcl",
-      "concurrency": 2
-    }
-  ],
-  "tier_assignment": {
-    "M2-1": "cheap",
-    "M2-7": "cheap",
-    "M2-2": "cheap",
-    "M2-3": "cheap",
-    "M2-5": "strong",
-    "M2-4": "cheap",
-    "M2-6": "strong",
-    "M2-8": "cheap",
-    "M2-9": "cheap",
-    "M2-10": "cheap"
+  "task": "M2 — Web Dashboard MVP",
+  "strategy": "phased_workflow+gcl_batch+parallel_subagents",
+  "phase_1_status": {
+    "M2-7 REST API": "✅ done, 19 tests pass (router_test, rules_test, incidents_test, ws_test)",
+    "M2-4 backend CRUD": "✅ done, included in api package",
+    "M2-6 state machine": "✅ done, canTransition pure-function + 4 tests pass",
+    "M2-8 WebSocket backend": "✅ done, RFC 6455 minimal + hub pub/sub + 9 tests pass",
+    "M2-1 Next.js scaffold": "🚧 in progress (package.json/tsconfig/tailwind/layout/home/NavBar/api client done)",
+    "M2-3 frontend alerts": "🚧 done (list page + detail page + actions wired to incident API)",
+    "migrations": "✅ 0002_alert_rules.sql + 0003_incident_audit.sql added"
   },
-  "safety_gates": [
-    "M2-5 auth — must use session cookies + CSRF (T15 critical)",
-    "M2-6 state machine — must validate transitions (no skipped states)"
-  ],
+  "phase_2_subagent_dispatch": {
+    "concurrency": 3,
+    "subagents": [
+      {
+        "id": "A",
+        "label": "Resources + Stats frontend",
+        "purpose": "M2-2 (resources list) + M2-9 (stats dashboard)",
+        "deliverables": [
+          "web/app/resources/page.tsx",
+          "web/app/stats/page.tsx",
+          "tests for both"
+        ]
+      },
+      {
+        "id": "B",
+        "label": "Rules CRUD frontend",
+        "purpose": "M2-4 (rules list/create/edit/delete UI)",
+        "deliverables": [
+          "web/app/rules/page.tsx",
+          "web/app/rules/[id]/page.tsx",
+          "web/components/RuleForm.tsx",
+          "tests"
+        ]
+      },
+      {
+        "id": "C",
+        "label": "Auth + WebSocket frontend",
+        "purpose": "M2-5 (session/cookie/CSRF) + M2-8 (browser WS client)",
+        "deliverables": [
+          "internal/auth/session.go (Go session store + cookie)",
+          "web/lib/auth.ts (frontend auth helpers)",
+          "web/lib/ws.ts (browser WS reconnect/subscribe)",
+          "web/app/login/page.tsx",
+          "Go + frontend tests"
+        ]
+      }
+    ]
+  },
   "tdd_principles": [
-    "Tests first, implementation second",
-    "Each file gets a corresponding _test.go or .test.ts",
-    "Run go test / pytest before claiming done"
+    "Tests first, impl second",
+    "Each file gets a test counterpart",
+    "Run go test / npm test before claiming done"
   ],
-  "gcl_loop": {
-    "max_iterations": 5,
-    "exit_when": "all 10 tasks have tests passing",
-    "deliverables_per_task": ["tests", "impl", "evidence"]
+  "constraints": {
+    "concurrency_cap": 3,
+    "skill_protocol": "TDD strict; GCL — Generator(subagent)+Critic(orchestrator)",
+    "no_overlap_files": "Each subagent owns distinct paths; conflicts surfaced via review"
   }
 }

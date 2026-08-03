@@ -32,7 +32,7 @@ func EvaluateBaseline(ctx context.Context, judge *Judge, samples []Sample) (CIGa
 		res.Fail = true
 		return res, nil
 	}
-	client := agent.NewClient("", "", nil)
+	client := agent.New(nil, "", "")
 	var sum int
 	for i, s := range samples {
 		diagnosis, err := client.Diagnose(ctx, s.AlertPayload)

@@ -10,6 +10,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/buhaiqing/ai-cloud-ops/internal/auth"
 )
 
 // Deps wires DB + future dependencies (auth, WS hub, ...) into the router.
@@ -17,7 +19,22 @@ import (
 type Deps struct {
 	Pool *pgxpool.Pool
 	Hub  *Hub // M2-8
-	// Auth  *auth.SessionStore  // M2-5
+	// M2-5: nil-safe. When nil, auth middleware is skipped and the auth
+	// handlers are not mounted (existing routing tests keep working).
+	Auth          *auth.Store
+	AuthHandlers  *auth.Handlers
+}
+
+// Public paths bypass the auth middleware. Stats stays public so dashboards
+// can render summary widgets before login; login/logout are public by
+// definition; WS is authed inside wsHandler (cookie + origin check) rather
+// than via the middleware to keep the upgrade request uninterrupted.
+var publicPaths = map[string]bool{
+	"/api/v1/ping":          true,
+	"/api/v1/stats":         true,
+	"/api/v1/auth/login":    true,
+	"/api/v1/auth/logout":   true,
+	"/api/v1/ws":            true,
 }
 
 // mountRoutes installs all /api/v1 routes on r. Safe to call with nil deps
@@ -25,6 +42,19 @@ type Deps struct {
 // return 503 if Deps.Pool is nil.
 func mountRoutes(r chi.Router, deps *Deps) {
 	r.Route("/api/v1", func(sub chi.Router) {
+		// Auth + CSRF middleware (skipped when deps.Auth is nil so existing
+		// routing tests keep working without a store).
+		if deps != nil && deps.Auth != nil {
+			sub.Use(auth.Middleware(deps.Auth, publicPaths))
+		}
+
+		// Auth endpoints (M2-5). Built from env in cmd/.
+		if deps != nil && deps.Auth != nil && deps.AuthHandlers != nil {
+			sub.Post("/auth/login", deps.AuthHandlers.Login)
+			sub.Post("/auth/logout", deps.AuthHandlers.Logout)
+			sub.Get("/auth/me", deps.AuthHandlers.Me)
+		}
+
 		sub.Get("/ping", pingHandler)
 		sub.Get("/stats", statsHandler(deps))
 

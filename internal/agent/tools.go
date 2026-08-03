@@ -1,38 +1,25 @@
-// Package agent implements the AI diagnosis agent for ai-cloud-ops.
-//
-// The agent takes a CloudMonitor alert, uses Claude with a tool-use loop
-// to gather context (via the read-only whitelist), and returns a structured
-// diagnosis (root cause + recommendations + evidence chains).
-//
-// This is the Go equivalent of src/ai_cloud_ops/agent/{client,tools,prompt}.py.
 package agent
 
-import (
-	"fmt"
-	"strings"
-)
+import "fmt"
 
-// ToolCategory marks whether a tool is read-only or mutating.
-// M1 only exposes ReadOnly. The Write category is reserved for M3+ execute
-// tools (reboot, scale) and never appears in the M1 whitelist.
-type ToolCategory string
+// Category classifies tools by whether they can change cloud resources.
+type Category string
 
 const (
-	ReadOnly ToolCategory = "read_only"
-	Write    ToolCategory = "write"
+	ReadOnly Category = "read_only"
+	Write    Category = "write"
 )
 
-// Tool is a whitelisted Aliyun OpenAPI tool the AI Agent may invoke.
+// Tool describes an Aliyun OpenAPI action exposed to the model.
 type Tool struct {
 	Name          string
-	Category      ToolCategory
+	Category      Category
 	AliyunService string
 	APIAction     string
 	Description   string
 }
 
-// READ_ONLY_TOOLS is the M1 whitelist. Mirrors src/ai_cloud_ops/agent/tools.py.
-// Single source of truth: keep in sync with Python (until deprecation).
+// READ_ONLY_TOOLS is the M1 tool whitelist. No mutating action is exposed.
 var READ_ONLY_TOOLS = []Tool{
 	{
 		Name:          "describe_ecs_instances",
@@ -106,70 +93,57 @@ var READ_ONLY_TOOLS = []Tool{
 	},
 }
 
-// ToolNotAllowedError is returned for any tool outside the whitelist.
+// ToolNotAllowedError reports an attempted call outside the whitelist.
 type ToolNotAllowedError struct {
 	Name string
 }
 
-func (e *ToolNotAllowedError) Error() string {
+func (e ToolNotAllowedError) Error() string {
 	return fmt.Sprintf("tool not in whitelist: %s", e.Name)
 }
 
-// IsAllowed checks whether a tool name is in the M1 whitelist.
+// IsAllowed reports whether name belongs to the ten-tool M1 whitelist.
 func IsAllowed(name string) bool {
-	for _, t := range READ_ONLY_TOOLS {
-		if t.Name == name {
+	for _, tool := range READ_ONLY_TOOLS {
+		if tool.Name == name {
 			return true
 		}
 	}
 	return false
 }
 
-// Get returns the tool spec by name. Returns (*ToolNotAllowedError) if missing.
-func Get(name string) (Tool, error) {
-	for _, t := range READ_ONLY_TOOLS {
-		if t.Name == name {
-			return t, nil
+// Get returns a whitelisted tool by name.
+func Get(name string) (Tool, bool) {
+	for _, tool := range READ_ONLY_TOOLS {
+		if tool.Name == name {
+			return tool, true
 		}
 	}
-	return Tool{}, &ToolNotAllowedError{Name: name}
+	return Tool{}, false
 }
 
-// AllToolSpecsForLLM returns tool specs in Anthropic's tool-use format.
-// See https://docs.anthropic.com/en/docs/build-with-claude/tool-use
+// AllToolSpecsForLLM returns Anthropic custom-tool definitions.
 func AllToolSpecsForLLM() []map[string]any {
-	out := make([]map[string]any, 0, len(READ_ONLY_TOOLS))
-	for _, t := range READ_ONLY_TOOLS {
-		out = append(out, map[string]any{
-			"name":        t.Name,
-			"description": t.Description,
+	specs := make([]map[string]any, 0, len(READ_ONLY_TOOLS))
+	for _, tool := range READ_ONLY_TOOLS {
+		specs = append(specs, map[string]any{
+			"name":        tool.Name,
+			"description": tool.Description,
 			"input_schema": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"region":      map[string]any{"type": "string", "description": "Aliyun region ID"},
-					"resource_id": map[string]any{"type": "string", "description": "Specific resource ID (optional)"},
+					"region": map[string]any{
+						"type":        "string",
+						"description": "Aliyun region ID",
+					},
+					"resource_id": map[string]any{
+						"type":        "string",
+						"description": "Specific resource ID (optional)",
+					},
 				},
 				"required": []string{"region"},
 			},
 		})
 	}
-	return out
-}
-
-// AllReadOnly are the tools guaranteed safe (read-only). For M1 this is
-// the full whitelist. M3+ will add a separate `Write` slice.
-func AllReadOnly() []Tool {
-	return READ_ONLY_TOOLS
-}
-
-// containsMutatingAction is a static safety check used by tests.
-func containsMutatingAction(t Tool) bool {
-	mutating := []string{"delete", "reboot", "release", "destroy", "drop", "terminate"}
-	desc := strings.ToLower(t.Description)
-	for _, m := range mutating {
-		if strings.Contains(desc, m) {
-			return true
-		}
-	}
-	return false
+	return specs
 }

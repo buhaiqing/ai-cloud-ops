@@ -2,21 +2,16 @@ package agent
 
 import (
 	"encoding/json"
-	"fmt"
+	"log/slog"
 )
 
-// PromptVersion is incremented on every prompt change. Used by eval suite
-// (tests/eval/judge.py in Python, internal/eval/score.go in Go) to detect
-// regressions on prompt tweaks. Mirror src/ai_cloud_ops/agent/prompt.py.
+// PromptVersion is persisted with diagnoses so prompt regressions are traceable.
 const PromptVersion = "v0.1.0-m1"
 
-// SystemPrompt is the M1 starter prompt. Strict JSON output, anti-hallucination.
-const SystemPrompt = `You are an SRE assistant for Alibaba Cloud. A user sends you a ` +
-	`CloudMonitor alert and you must produce a structured diagnosis.
+// SystemPrompt mirrors the M1 Python diagnosis prompt.
+const SystemPrompt = `You are an SRE assistant for Alibaba Cloud. A user sends you a CloudMonitor alert and you must produce a structured diagnosis.
 
-You have access to read-only Aliyun OpenAPI tools (Describe*, Get*, List*). ` +
-	`Use them to pull context before diagnosing — never invent resource IDs, ` +
-	`account IDs, or timestamps. If you cannot confirm a fact, say 'unknown'.
+You have access to read-only Aliyun OpenAPI tools (Describe*, Get*, List*). Use them to pull context before diagnosing — never invent resource IDs, account IDs, or timestamps. If you cannot confirm a fact, say 'unknown'.
 
 ## Output structure (JSON only)
 {
@@ -45,14 +40,14 @@ You have access to read-only Aliyun OpenAPI tools (Describe*, Get*, List*). ` +
 - Recommending Read actions when only Write actions solve the problem (and vice versa)
 `
 
-// BuildUserPrompt formats an alert payload into a user prompt.
+// BuildUserPrompt embeds the alert as formatted JSON.
 func BuildUserPrompt(alert map[string]any) string {
-	b, err := json.MarshalIndent(alert, "", "  ")
+	alertJSON, err := json.MarshalIndent(alert, "", "  ")
 	if err != nil {
-		b = []byte(fmt.Sprintf("%v", alert))
+		slog.Error("agent.prompt.marshal_failed", "err", err)
+		alertJSON = []byte("{}")
 	}
-	return "Diagnose this Aliyun CloudMonitor alert:\n\n" +
-		"```json\n" + string(b) + "\n```\n\n" +
-		"First decide which read-only tools to call for context. " +
+	return "Diagnose this Aliyun CloudMonitor alert:\n\n```json\n" + string(alertJSON) +
+		"\n```\n\nFirst decide which read-only tools to call for context. " +
 		"Then return the JSON diagnosis above."
 }

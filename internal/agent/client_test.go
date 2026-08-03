@@ -3,166 +3,145 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
+
+	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/option"
 )
 
-func TestParseDiagnosisValid(t *testing.T) {
-	raw := `{
-		"root_cause": "CPU sustained > 90% for 15 minutes",
-		"recommendations": [
-			{"action": "reboot instance", "command": "aliyun ecs RebootInstance", "expected_outcome": "CPU drops to <50%"}
-		],
-		"evidence_chains": [
-			{"claim": "CPU high", "supporting_tool": "describe_ecs_monitor_data", "supporting_data": "max=96.5 avg=92.1"}
-		],
+type mockMessageClient struct {
+	responses []*anthropic.Message
+	calls     []anthropic.MessageNewParams
+	err       error
+}
+
+func (m *mockMessageClient) New(
+	_ context.Context,
+	params anthropic.MessageNewParams,
+	_ ...option.RequestOption,
+) (*anthropic.Message, error) {
+	m.calls = append(m.calls, params)
+	if m.err != nil {
+		return nil, m.err
+	}
+	if len(m.responses) == 0 {
+		return nil, errors.New("mock has no response")
+	}
+	response := m.responses[0]
+	m.responses = m.responses[1:]
+	return response, nil
+}
+
+func validDiagnosisJSON() string {
+	payload, _ := json.Marshal(map[string]any{
+		"root_cause": "RDS CPU saturated due to a missing index",
+		"recommendations": []map[string]any{{
+			"action":           "add index",
+			"command":          "aliyun rds CreateIndex",
+			"expected_outcome": "query latency decreases",
+		}},
+		"evidence_chains": []map[string]any{{
+			"claim":           "CPU exceeded 95%",
+			"supporting_tool": "describe_cms_metric_list",
+			"supporting_data": "avg=97.2",
+		}},
 		"confidence": "high",
-		"caveats": []
-	}`
-	d, err := ParseDiagnosis(raw, "claude-sonnet-4-5", 1234)
+		"caveats":    []string{"verify during business hours"},
+	})
+	return string(payload)
+}
+
+func textResponse(text string) *anthropic.Message {
+	blockJSON, _ := json.Marshal(map[string]any{"type": "text", "text": text})
+	var block anthropic.ContentBlockUnion
+	if err := json.Unmarshal(blockJSON, &block); err != nil {
+		panic(err)
+	}
+	return &anthropic.Message{Content: []anthropic.ContentBlockUnion{block}}
+}
+
+func toolUseResponse(id string) *anthropic.Message {
+	blockJSON, _ := json.Marshal(map[string]any{
+		"type":  "tool_use",
+		"id":    id,
+		"name":  "describe_ecs_instances",
+		"input": map[string]any{"region": "cn-hangzhou"},
+	})
+	var block anthropic.ContentBlockUnion
+	if err := json.Unmarshal(blockJSON, &block); err != nil {
+		panic(err)
+	}
+	return &anthropic.Message{Content: []anthropic.ContentBlockUnion{block}}
+}
+
+func testClient(messages messageCreator) *Client {
+	return &Client{model: "claude-test", messageClient: messages}
+}
+
+func TestDiagnoseSuccessfulTextResponse(t *testing.T) {
+	mock := &mockMessageClient{responses: []*anthropic.Message{textResponse(validDiagnosisJSON())}}
+	diagnosis, err := testClient(mock).Diagnose(context.Background(), map[string]any{"alert_id": "a-1"})
 	if err != nil {
-		t.Fatalf("ParseDiagnosis: %v", err)
+		t.Fatalf("Diagnose() error = %v", err)
 	}
-	if d.RootCause == "" {
-		t.Error("expected non-empty RootCause")
+	if diagnosis.Confidence != "high" || !strings.Contains(diagnosis.RootCause, "RDS CPU") {
+		t.Fatalf("Diagnose() = %#v", diagnosis)
 	}
-	if d.Confidence != "high" {
-		t.Errorf("got confidence %q, want high", d.Confidence)
-	}
-	if d.Model != "claude-sonnet-4-5" {
-		t.Errorf("model not injected: %q", d.Model)
-	}
-	if d.PromptVersion != PromptVersion {
-		t.Errorf("prompt_version not injected: got %q want %q", d.PromptVersion, PromptVersion)
-	}
-	if d.LatencyMs != 1234 {
-		t.Errorf("latency_ms not injected: got %d", d.LatencyMs)
+	if diagnosis.Model != "claude-test" || diagnosis.PromptVersion != PromptVersion {
+		t.Fatalf("diagnosis metadata = %#v", diagnosis)
 	}
 }
 
-func TestParseDiagnosisRejectsUnknownFields(t *testing.T) {
-	raw := `{
-		"root_cause": "x",
-		"recommendations": [],
-		"evidence_chains": [],
-		"confidence": "low",
-		"caveats": [],
-		"surprise_field": "should fail"
-	}`
-	if _, err := ParseDiagnosis(raw, "m", 0); err == nil {
-		t.Fatal("expected error for unknown field")
-	}
-}
-
-func TestParseDiagnosisStripsCodeFences(t *testing.T) {
-	raw := "```json\n{\"root_cause\":\"x\",\"recommendations\":[],\"evidence_chains\":[],\"confidence\":\"low\",\"caveats\":[]}\n```"
-	d, err := ParseDiagnosis(raw, "m", 0)
+func TestDiagnoseToolUseLoop(t *testing.T) {
+	mock := &mockMessageClient{responses: []*anthropic.Message{
+		toolUseResponse("toolu-1"),
+		textResponse(validDiagnosisJSON()),
+	}}
+	diagnosis, err := testClient(mock).Diagnose(context.Background(), map[string]any{"alert_id": "a-2"})
 	if err != nil {
-		t.Fatalf("ParseDiagnosis: %v", err)
+		t.Fatalf("Diagnose() error = %v", err)
 	}
-	if d.RootCause != "x" {
-		t.Errorf("got %q", d.RootCause)
+	if diagnosis.Confidence != "high" || len(mock.calls) != 2 {
+		t.Fatalf("diagnosis = %#v, calls = %d", diagnosis, len(mock.calls))
 	}
-}
-
-func TestStripCodeFences(t *testing.T) {
-	tests := []struct {
-		in, want string
-	}{
-		{`{"a":1}`, `{"a":1}`},
-		{"```\n{\"a\":1}\n```", "{\"a\":1}"},
-		{"```json\n{\"a\":1}\n```", "{\"a\":1}"},
+	secondRequest, err := json.Marshal(mock.calls[1].Messages)
+	if err != nil {
+		t.Fatalf("marshal second request: %v", err)
 	}
-	for _, tc := range tests {
-		if got := stripCodeFences(tc.in); got != tc.want {
-			t.Errorf("stripCodeFences(%q) = %q, want %q", tc.in, got, tc.want)
+	for _, want := range []string{"tool_result", "toolu-1", "tool_not_implemented_in_m1"} {
+		if !strings.Contains(string(secondRequest), want) {
+			t.Fatalf("second request missing %q: %s", want, secondRequest)
 		}
 	}
 }
 
-func TestNewClientDefaults(t *testing.T) {
-	c := NewClient("test-key", "", nil)
-	if c.model != "claude-sonnet-4-5" {
-		t.Errorf("default model should be claude-sonnet-4-5, got %q", c.model)
+func TestDiagnoseCapsToolLoopAtFiveIterations(t *testing.T) {
+	responses := make([]*anthropic.Message, maxToolIterations)
+	for i := range responses {
+		responses[i] = toolUseResponse("toolu-cap")
 	}
-	if c.executor == nil {
-		t.Error("default executor should be NoopToolExecutor, got nil")
-	}
-}
-
-func TestDiagnoseStubReturnsPopulatedDiagnosis(t *testing.T) {
-	c := NewClient("test-key", "", nil)
-	alert := map[string]any{
-		"alert_id":      "alert-stub-001",
-		"severity":      "critical",
-		"resource_type": "ECS",
-		"metric": map[string]any{
-			"metric_name": "CPUUtilization",
-			"value":       96.5,
-		},
-	}
-	d, err := c.Diagnose(context.Background(), alert)
+	mock := &mockMessageClient{responses: responses}
+	diagnosis, err := testClient(mock).Diagnose(context.Background(), map[string]any{"alert_id": "a-3"})
 	if err != nil {
-		t.Fatalf("Diagnose: %v", err)
+		t.Fatalf("Diagnose() error = %v", err)
 	}
-	if d.Confidence != "low" {
-		t.Errorf("stub confidence should be low, got %q", d.Confidence)
+	if got := len(mock.calls); got != maxToolIterations {
+		t.Fatalf("Messages.New calls = %d, want %d", got, maxToolIterations)
 	}
-	if d.RootCause == "" {
-		t.Error("stub should populate RootCause from alert payload")
-	}
-	if d.PromptVersion != PromptVersion {
-		t.Error("stub should inject PromptVersion")
-	}
-	if len(d.Recommendations) == 0 {
-		t.Error("stub should produce at least one recommendation")
+	if diagnosis.Confidence != "low" || diagnosis.RootCause != "diagnosis_truncated" {
+		t.Fatalf("Diagnose() = %#v", diagnosis)
 	}
 }
 
-func TestDiagnoseReturnsErrorFlagForUnsetAPI(t *testing.T) {
-	c := NewClient("", "", nil)
-	_, err := c.Diagnose(context.Background(), map[string]any{"alert_id": "x"})
-	if err != nil {
-		t.Errorf("M1 stub should never error, got %v", err)
+func TestDiagnoseParseErrorReturnsLowConfidence(t *testing.T) {
+	mock := &mockMessageClient{responses: []*anthropic.Message{textResponse("not-json")}}
+	diagnosis, err := testClient(mock).Diagnose(context.Background(), map[string]any{"alert_id": "a-4"})
+	if err == nil {
+		t.Fatal("Diagnose() error = nil, want parse error")
 	}
-}
-
-func TestNoopExecutor(t *testing.T) {
-	exec := NoopToolExecutor{}
-	out, err := exec.Execute(context.Background(), "describe_ecs_instances", nil)
-	if err != nil {
-		t.Fatalf("noop should not error: %v", err)
-	}
-	if !contains(out, "tool_not_implemented_in_m1") {
-		t.Errorf("noop output should mark as not implemented, got %q", out)
-	}
-}
-
-// contains is a tiny strings.Contains helper to avoid the import.
-func contains(s, substr string) bool {
-	for i := 0; i+len(substr) <= len(s); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
-
-// Sanity: the Diagnosis type is JSON-marshalable so MCP can return it.
-func TestDiagnosisJSONRoundTrip(t *testing.T) {
-	d := &Diagnosis{
-		RootCause: "test",
-		Recommendations: []Recommendation{
-			{Action: "a", Command: "c", ExpectedOutcome: "e"},
-		},
-		Confidence: "high",
-		Caveats:    []string{"x"},
-	}
-	b, err := json.Marshal(d)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	if !strings.Contains(string(b), `"root_cause":"test"`) {
-		t.Errorf("unexpected JSON: %s", b)
+	if diagnosis.Confidence != "low" || len(diagnosis.Caveats) != 1 || diagnosis.Caveats[0] != "inference failed" {
+		t.Fatalf("Diagnose() = %#v", diagnosis)
 	}
 }

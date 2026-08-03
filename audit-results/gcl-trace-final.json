@@ -1,0 +1,62 @@
+{
+  "task": "M2 — Web Dashboard MVP (10 sub-tasks)",
+  "status": "ALL DELIVERED + TESTED",
+  "duration": "≈30 min from main agent start to final integration",
+  "strategy": "phased_workflow + gcl_batch + parallel_subagents (3 concurrent)",
+  "subagent_dispatch": {
+    "A_M2-2_M2-9": "6m 41s — resources + stats pages + 9 tests",
+    "B_M2-4_frontend": "5m 53s — RuleForm + rules list/edit + 14 tests",
+    "C_M2-5_M2-8": "7m 12s — Go auth (18 tests) + frontend auth + WS client (17 tests) + login page"
+  },
+  "deliverables": {
+    "backend_go": {
+      "internal/api/router.go": "M2-7 — REST routes + Deps wiring",
+      "internal/api/rules.go": "M2-4 — Rule CRUD handlers + validation",
+      "internal/api/incidents.go": "M2-6 — state machine (canTransition) + handlers",
+      "internal/api/ws.go": "M2-8 — RFC 6455 minimal WS server + Hub pub/sub",
+      "internal/auth/session.go": "M2-5 — session store + middleware (CSRF + bcrypt)",
+      "internal/auth/handlers.go": "login/logout/me",
+      "db/migrations/0002_alert_rules.sql": "M2-4 schema",
+      "db/migrations/0003_incident_audit.sql": "M2-6 audit trail"
+    },
+    "frontend_nextjs": {
+      "app/layout.tsx + page.tsx + globals.css": "M2-1 — scaffolding + dark-mode bootstrap",
+      "components/NavBar.tsx": "M2-1 + M2-10 — nav + dark mode toggle",
+      "lib/api.ts": "shared typed client for /api/v1/*",
+      "lib/auth.ts + ws.ts": "M2-5 + M2-8 frontend helpers",
+      "app/alerts/page.tsx + [id]/page.tsx": "M2-3 — list + detail + lifecycle buttons",
+      "app/resources/page.tsx": "M2-2 — resource list with 3 filters",
+      "app/rules/page.tsx + [id]/page.tsx + components/RuleForm.tsx": "M2-4 — full CRUD",
+      "app/stats/page.tsx": "M2-9 — 5 stat cards",
+      "app/login/page.tsx": "M2-5 — login form"
+    }
+  },
+  "evidence": {
+    "go_tests": "go test ./... → all 11 packages green, 100+ tests pass",
+    "frontend_tests": "npx vitest run --no-coverage (from web/) → 6 files, 43/43 tests pass",
+    "typescript": "npx tsc --noEmit (from web/) → 0 errors",
+    "go_build": "go build ./... → no errors"
+  },
+  "tdd_compliance": "All deliverables written TDD-first (tests then impl); GCL — Generator=subagent, Critic=main-agent (caught e.g. `app/alerts/[id]/page.tsx` tsc errors and fixed)",
+  "ponytail_decisions": [
+    "Hand-rolled RFC 6455 (~50 lines) instead of gorilla/websocket dep",
+    "In-memory session store with Redis upgrade path documented (not premature)",
+    "Stats endpoint returns documented JSON contract even when DB is down",
+    "Resources page uses hardcoded filter options (no extra /accounts fetch)"
+  ],
+  "security_decisions": {
+    "session_cookie": "aico_session (HttpOnly, SameSite=Lax, Secure-when-TLS)",
+    "csrf_cookie": "aico_csrf (double-submit, JS-readable)",
+    "csrf_header": "X-CSRF-Token, validated on POST/PUT/DELETE",
+    "timing_equalization": "bcrypt.CompareHashAndPassword on BOTH bad-user and bad-password branches to defeat user enumeration",
+    "public_paths": "/api/v1/{ping,stats,auth/login,auth/logout,ws}"
+  },
+  "deferred_ponytail": [
+    "WS cookie-based auth (cookie auth inside wsHandler)",
+    "WebSocket Origin check (TODO(M2-5) in upgrader.CheckOrigin)",
+    "Session expiry sweeper (currently no TTL on sessions)",
+    "Rate limiting on /auth/login",
+    "GET /api/v1/rules/{id} (edit page uses list+find instead)",
+    "Per-rule account-filter UI"
+  ]
+}

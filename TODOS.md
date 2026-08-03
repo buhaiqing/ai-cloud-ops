@@ -31,16 +31,16 @@
 
 | # | 优先级 | 项目 | 描述 | 依赖 | 状态 |
 |---|---|---|---|---|---|
-| M2-1 | **P1** | Next.js scaffolding | `web/` 目录 + Next.js 14 (app router) + TypeScript + Tailwind | M1 + Go Phase 3 | ⏸ |
-| M2-2 | **P1** | Account/Region/Resource 列表页 | 表格视图；按账号/区域过滤；分页 | M2-1 | ⏸ |
-| M2-3 | **P1** | Alert 时间线 + 详情页 | 列出 alerts（按时间倒序）；点开看 AI 报告 | M2-1 + 后端 GET API | ⏸ |
-| M2-4 | **P1** | 告警规则 CRUD | 最简版：阈值规则 + 通知渠道；UI 表单 | M2-1 + 后端 rules API | ⏸ |
-| M2-5 | **P1** | **T15 — Dashboard auth** | **Codex critical gap**：Dashboard 暴露云清单，必须有 auth（session/cookie + CSRF） | M2-1 | ⏸ |
-| M2-6 | **P1** | **T17 — Incident lifecycle** | ack / suppress / maintenance / replay 状态机；UI 操作按钮 | M2-3 | ⏸ |
-| M2-7 | **P1** | 后端 REST API | FastAPI / chi endpoints：GET /accounts, /resources, /alerts, /analyses；POST/PUT /rules | M1 backend | 部分（Go queries.go 有 ListAlerts） |
-| M2-8 | **P2** | WebSocket 实时推送 | 新告警 → Dashboard 实时显示 | M2-3 | ⏸ |
-| M2-9 | **P2** | 仪表盘统计 | 总告警数 / AI 分析成功率 / 平均延迟 / 资源覆盖数 | M2-3 | ⏸ |
-| M2-10 | **P2** | 暗色模式 / 移动端适配 | 不要求完美，但 mobile 可读 | M2-2, M2-3 | ⏸ |
+| M2-1 | **P1** | Next.js scaffolding | `web/` 目录 + Next.js 14 (app router) + TypeScript + Tailwind | M1 + Go Phase 3 | ✅ 脚手架完成（package.json/tsconfig/tailwind/layout/NavBar/api client） |
+| M2-2 | **P1** | Account/Region/Resource 列表页 | 表格视图；按账号/区域过滤；分页 | M2-1 | ✅ 3 过滤 + 表格 + 5 测试通过 |
+| M2-3 | **P1** | Alert 时间线 + 详情页 | 列出 alerts（按时间倒序）；点开看 AI 报告 | M2-1 + 后端 GET API | ✅ 列表+详情页+状态转换按钮完成 |
+| M2-4 | **P1** | 告警规则 CRUD | 最简版：阈值规则 + 通知渠道；UI 表单 | M2-1 + 后端 rules API | ✅ RuleForm + rules list/edit + 14 测试通过 |
+| M2-5 | **P1** | **T15 — Dashboard auth** | **Codex critical gap**：Dashboard 暴露云清单，必须有 auth（session/cookie + CSRF） | M2-1 | ✅ bcrypt + session store + CSRF + login 页面 + 18+3 测试通过 |
+| M2-6 | **P1** | **T17 — Incident lifecycle** | ack / suppress / maintenance / replay 状态机；UI 操作按钮 | M2-3 | ✅ 状态机+转换验证+UI 操作按钮完成 |
+| M2-7 | **P1** | 后端 REST API | FastAPI / chi endpoints：GET /accounts, /resources, /alerts, /analyses；POST/PUT /rules | M1 backend | ✅ 19 测试通过（router_test/rules_test/incidents_test/ws_test） |
+| M2-8 | **P2** | WebSocket 实时推送 | 新告警 → Dashboard 实时显示 | M2-3 | ✅ Go Hub+RFC6455+9 测试；前端 WSClient+重连退避+17 测试 |
+| M2-9 | **P2** | 仪表盘统计 | 总告警数 / AI 分析成功率 / 平均延迟 / 资源覆盖数 | M2-3 | ✅ 5 卡片 dashboard + 4 测试通过 |
+| M2-10 | **P2** | 暗色模式 / 移动端适配 | 不要求完美，但 mobile 可读 | M2-2, M2-3 | ✅ Tailwind darkMode=class；NavBar toggle；布局 mobile-first |
 
 ---
 

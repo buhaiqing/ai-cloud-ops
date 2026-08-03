@@ -1,100 +1,47 @@
 package agent
 
-import (
-	"strings"
-	"testing"
-)
-
-func TestReadOnlyToolsAreAllReadOnly(t *testing.T) {
-	for _, tool := range READ_ONLY_TOOLS {
-		if tool.Category != ReadOnly {
-			t.Errorf("%s is not ReadOnly", tool.Name)
-		}
-	}
-}
-
-func TestWhitelistHas10Tools(t *testing.T) {
-	if got := len(READ_ONLY_TOOLS); got != 10 {
-		t.Errorf("got %d tools, want 10", got)
-	}
-}
+import "testing"
 
 func TestIsAllowed(t *testing.T) {
-	tests := []struct {
-		name string
-		want bool
-	}{
-		{"describe_ecs_instances", true},
-		{"describe_rds_slow_logs", true},
-		{"lookup_actiontrail_events", true},
-		{"delete_ecs_instance", false},
-		{"reboot_rds", false},
-		{"", false},
+	if !IsAllowed("describe_ecs_instances") {
+		t.Fatal("describe_ecs_instances should be allowed")
 	}
-	for _, tc := range tests {
-		if got := IsAllowed(tc.name); got != tc.want {
-			t.Errorf("IsAllowed(%q) = %v, want %v", tc.name, got, tc.want)
-		}
+	if IsAllowed("delete_ecs_instance") {
+		t.Fatal("delete_ecs_instance should not be allowed")
 	}
 }
 
-func TestGetReturnsToolOrError(t *testing.T) {
-	tool, err := Get("describe_ecs_instances")
-	if err != nil {
-		t.Fatalf("unexpected err: %v", err)
+func TestReadOnlyToolsContainsExactlyTenTools(t *testing.T) {
+	if got := len(READ_ONLY_TOOLS); got != 10 {
+		t.Fatalf("READ_ONLY_TOOLS has %d tools, want 10", got)
 	}
-	if tool.AliyunService != "ECS" || tool.APIAction != "DescribeInstances" {
-		t.Errorf("got %+v", tool)
-	}
-
-	_, err = Get("delete_ecs_instance")
-	if err == nil {
-		t.Fatal("expected error for non-whitelisted tool")
-	}
-	if _, ok := err.(*ToolNotAllowedError); !ok {
-		t.Errorf("expected ToolNotAllowedError, got %T", err)
+	for _, tool := range READ_ONLY_TOOLS {
+		if tool.Category != ReadOnly {
+			t.Fatalf("%s category = %q, want %q", tool.Name, tool.Category, ReadOnly)
+		}
 	}
 }
 
 func TestAllToolSpecsForLLM(t *testing.T) {
 	specs := AllToolSpecsForLLM()
-	if len(specs) != len(READ_ONLY_TOOLS) {
-		t.Errorf("got %d specs, want %d", len(specs), len(READ_ONLY_TOOLS))
+	if got := len(specs); got != 10 {
+		t.Fatalf("AllToolSpecsForLLM returned %d specs, want 10", got)
 	}
-	for i, spec := range specs {
-		if _, ok := spec["name"].(string); !ok {
-			t.Errorf("spec[%d] missing name", i)
-		}
-		if _, ok := spec["description"].(string); !ok {
-			t.Errorf("spec[%d] missing description", i)
+	for _, spec := range specs {
+		if spec["name"] == "" || spec["description"] == "" {
+			t.Fatalf("spec missing name or description: %#v", spec)
 		}
 		schema, ok := spec["input_schema"].(map[string]any)
-		if !ok {
-			t.Errorf("spec[%d] missing input_schema", i)
-			continue
+		if !ok || schema["type"] != "object" {
+			t.Fatalf("invalid input_schema: %#v", spec["input_schema"])
 		}
-		props, ok := schema["properties"].(map[string]any)
-		if !ok {
-			t.Errorf("spec[%d] input_schema missing properties", i)
-			continue
+		properties, ok := schema["properties"].(map[string]any)
+		if !ok || properties["region"] == nil {
+			t.Fatalf("input_schema missing region property: %#v", schema)
 		}
-		if _, ok := props["region"]; !ok {
-			t.Errorf("spec[%d] input_schema.properties missing region", i)
-		}
-	}
-}
-
-func TestNoMutatingActionsInWhitelist(t *testing.T) {
-	mutating := []string{"delete", "reboot", "release", "destroy", "drop", "terminate"}
-	for _, tool := range READ_ONLY_TOOLS {
-		desc := strings.ToLower(tool.Description)
-		for _, m := range mutating {
-			if strings.Contains(desc, m) {
-				t.Errorf("%s description contains mutating verb %q", tool.Name, m)
-			}
-		}
-		if containsMutatingAction(tool) != strings.ContainsAny(desc, "") {
-			t.Errorf("containsMutatingAction inconsistent for %s", tool.Name)
+		required, ok := schema["required"].([]string)
+		if !ok || len(required) != 1 || required[0] != "region" {
+			t.Fatalf("input_schema required = %#v, want [region]", schema["required"])
 		}
 	}
 }

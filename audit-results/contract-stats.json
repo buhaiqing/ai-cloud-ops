@@ -1,0 +1,31 @@
+{
+  "contract_id": "M2-9-stats",
+  "version": "1.0",
+  "endpoint": "GET /api/v1/stats",
+  "auth": "public (no session required) — see router.go publicPaths",
+  "request": null,
+  "response_200": {
+    "type": "object",
+    "required": ["total_alerts", "open_alerts", "ai_success_rate", "avg_latency_ms", "resources_covered", "generated_at"],
+    "properties": {
+      "total_alerts": { "type": "integer", "description": "COUNT of all alerts in last 30d, partition-aware" },
+      "open_alerts":  { "type": "integer", "description": "COUNT of alerts WHERE status='open' in last 30d" },
+      "ai_success_rate": { "type": "number", "minimum": 0, "maximum": 1, "description": "ratio of analyses with non-empty root_cause / total analyses in last 30d; 0 if no analyses" },
+      "avg_latency_ms":  { "type": "integer", "description": "AVG(latency_ms) of analyses in last 30d; 0 if no analyses" },
+      "resources_covered": { "type": "integer", "description": "DISTINCT COUNT of (account_alias, region, resource_type, resource_id) in resources table" },
+      "generated_at":  { "type": "string", "format": "date-time", "description": "UTC ISO-8601 of when the stats were computed" }
+    }
+  },
+  "response_503": { "description": "DB unavailable (current behavior, preserved for tests with nil pool)" },
+  "side_effects": "none (read-only)",
+  "sql_queries": {
+    "total_alerts_30d": "SELECT COUNT(*) FROM alerts WHERE created_at > now() - interval '30 days'",
+    "open_alerts_30d":  "SELECT COUNT(*) FROM alerts WHERE status='open' AND created_at > now() - interval '30 days'",
+    "ai_success_30d":   "SELECT CASE WHEN COUNT(*)=0 THEN 0 ELSE COUNT(*) FILTER (WHERE root_cause <> '')::float / COUNT(*) END, COALESCE(AVG(latency_ms),0)::int FROM analyses WHERE created_at > now() - interval '30 days'",
+    "resources_covered": "SELECT COUNT(*) FROM (SELECT DISTINCT account_alias, region, resource_type, resource_id FROM resources) t"
+  },
+  "notes": "All queries use time-window 30d; partition table alerts is RANGE-partitioned by month, so '30 days' filter is index-friendly. The success_rate aggregation uses FILTER (WHERE ...) to avoid two queries.",
+  "frontend_contract": "import { Stats } from '../../lib/api' — already exported. api.stats() returns this exact shape; existing tests in tests/stats.test.tsx pass fixtures with these 5 fields + generated_at.",
+  "ts_type_unchanged": true,
+  "tdd_target": "Write Go test with testfixtures (or stub pool) FIRST. Then implement. Existing tests/stats.test.tsx continues to pass (it mocks fetch)."
+}

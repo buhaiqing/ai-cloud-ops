@@ -4,7 +4,10 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // --- Hub tests ---
@@ -141,4 +144,153 @@ func TestReadFrame_UnmaskedTextPayload(t *testing.T) {
 	if string(payload) != "hi" {
 		t.Errorf("payload mismatch: %q", payload)
 	}
+}
+
+// --- Concurrency tests (run with `go test -race`) ---
+// These exercise the real race-prone paths: concurrent Publish to many
+// clients while subscribers are coming and going. If any of these fail
+// under -race, the data race is real and will bite in prod.
+
+func TestHub_ConcurrentPublishAndSubscribe(t *testing.T) {
+	h := NewHub()
+	const N = 50
+	const ITER = 200
+
+	var wg sync.WaitGroup
+
+	// Publishers: hammer Publish from many goroutines.
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < ITER; j++ {
+				h.Publish(Event{Type: "alert.new"})
+			}
+		}()
+	}
+
+	// Subscribers: rapidly add/remove clients.
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < ITER; j++ {
+				c := &wsConn{}
+				ch := make(chan Event, 4)
+				h.mu.Lock()
+				h.clients[c] = ch
+				h.mu.Unlock()
+				// Drain in background; if we miss, that's OK (drop policy).
+				go func() {
+					for range ch {
+					}
+				}()
+				h.mu.Lock()
+				delete(h.clients, c)
+				h.mu.Unlock()
+			}
+		}()
+	}
+
+	// Counter: track ClientCount stability (no negative, no goroutine leak).
+	var maxSeen int64
+	done := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			case <-time.After(1 * time.Millisecond):
+				c := int64(h.ClientCount())
+				if c < 0 {
+					t.Errorf("negative ClientCount: %d", c)
+				}
+				atomic.StoreInt64(&maxSeen, max(atomic.LoadInt64(&maxSeen), c))
+			}
+		}
+	}()
+
+	wg.Wait()
+	close(done)
+	// Sanity: max concurrent clients never exceeded N.
+	if atomic.LoadInt64(&maxSeen) > int64(N)+10 { // slack for in-flight adds
+		t.Errorf("ClientCount grew unexpectedly: %d", maxSeen)
+	}
+}
+
+func TestHub_PublishDoesNotBlockOnSlowConsumer(t *testing.T) {
+	h := NewHub()
+	// Slow consumer: channel capacity 0, never reads.
+	slow := make(chan Event)
+	fast := make(chan Event, 100)
+	h.mu.Lock()
+	h.clients[&wsConn{}] = slow
+	h.clients[&wsConn{}] = fast
+	h.mu.Unlock()
+
+	// Publish many events; must not block even though slow is unread.
+	done := make(chan struct{})
+	go func() {
+		for i := 0; i < 1000; i++ {
+			h.Publish(Event{Type: "flood"})
+		}
+		close(done)
+	}()
+	select {
+	case <-done:
+		// good
+	case <-time.After(2 * time.Second):
+		t.Fatal("Publish blocked on slow consumer — drop policy broken")
+	}
+	// Fast consumer got all events (capacity is 100, so first 100; rest dropped).
+	count := 0
+	for {
+		select {
+		case <-fast:
+			count++
+		default:
+			goto check
+		}
+	}
+check:
+	if count == 0 {
+		t.Error("fast consumer got nothing")
+	}
+}
+
+func TestHub_ConcurrentClientCountNeverNegative(t *testing.T) {
+	// Stress: 8 goroutines each adding 1000 clients then removing them.
+	// ClientCount must always be >= 0 and eventually 0.
+	h := NewHub()
+	var wg sync.WaitGroup
+	for g := 0; g < 8; g++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < 1000; i++ {
+				c := &wsConn{}
+				ch := make(chan Event, 1)
+				h.mu.Lock()
+				h.clients[c] = ch
+				h.mu.Unlock()
+				h.mu.Lock()
+				delete(h.clients, c)
+				h.mu.Unlock()
+				if n := h.ClientCount(); n < 0 {
+					t.Errorf("ClientCount went negative: %d", n)
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	if h.ClientCount() != 0 {
+		t.Errorf("expected 0 after cleanup, got %d", h.ClientCount())
+	}
+}
+
+func max(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
 }

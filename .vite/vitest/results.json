@@ -1,0 +1,1 @@
+{"version":"1.6.0","results":[[":web/lib/ws.test.ts",{"duration":6,"failed":false}],[":web/lib/auth.test.ts",{"duration":22,"failed":true}],[":web/tests/login.test.tsx",{"duration":3,"failed":true}],[":web/tests/resources.test.tsx",{"duration":5,"failed":true}],[":web/tests/stats.test.tsx",{"duration":4,"failed":true}],[":web/tests/rules.test.tsx",{"duration":5,"failed":true}]]}

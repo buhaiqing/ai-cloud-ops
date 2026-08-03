@@ -1,0 +1,12 @@
+{
+  "task": "high-concurrency test coverage (M2 回归防护)",
+  "strategy": "parallel_batch",
+  "concurrency": 3,
+  "subtasks": [
+    {"id": "A", "files": ["internal/auth/session_test.go"], "purpose": "Session Store 并发"},
+    {"id": "B", "files": ["internal/api/incidents_test.go"], "purpose": "状态机 + 转换 handler 并发"},
+    {"id": "C", "files": ["web/lib/ws.test.ts", "web/lib/api.test.ts"], "purpose": "前端 WS client + api client 并发"}
+  ],
+  "owner_main": "docs update (AGENTS.md + backend-standards.md) — race CI gate",
+  "verification": "go test -race + npx vitest"
+}
