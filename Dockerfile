@@ -1,32 +1,43 @@
 # syntax=docker/dockerfile:1.7
+#
+# Multi-stage build for the Go backend.
+# Final image: ~15MB (vs ~150MB for Python equivalent).
 
-FROM python:3.11-slim AS base
+# --- Stage 1: build ---
+FROM golang:1.23-alpine AS build
 
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    UV_LINK_MODE=copy \
-    UV_PROJECT_ENVIRONMENT=python
+WORKDIR /src
 
-# Install uv
-COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /uvx /usr/local/bin/
-
-WORKDIR /app
-
-# Install dependencies first (better layer caching)
-COPY pyproject.toml uv.lock* ./
-RUN uv sync --no-install-project --no-dev
+# Cache module downloads
+COPY go.mod go.sum ./
+RUN go mod download
 
 # Copy source
-COPY src ./src
-COPY alembic.ini* ./
-COPY db ./db
-RUN uv sync --no-dev
+COPY . .
 
-# Create non-root user
-RUN useradd --create-home --shell /bin/bash appuser
-USER appuser
+# Build static binary (no cgo, stripped, no symbol tables)
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-s -w" \
+    -trimpath \
+    -o /out/aico ./cmd/aico
 
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-s -w" \
+    -trimpath \
+    -o /out/aico-mcp ./cmd/aico-mcp
+
+# --- Stage 2: runtime ---
+FROM gcr.io/distroless/static-debian12:nonroot AS runtime
+
+COPY --from=build /out/aico /usr/local/bin/aico
+COPY --from=build /out/aico-mcp /usr/local/bin/aico-mcp
+
+USER nonroot:nonroot
 EXPOSE 8080 8081
 
-# Default: start API server
-CMD ["uv", "run", "uvicorn", "ai_cloud_ops.api:app", "--host", "0.0.0.0", "--port", "8080"]
+ENTRYPOINT ["/usr/local/bin/aico"]
+CMD ["serve"]
+
+# Healthcheck — pings /healthz via wget (distroless doesn't have curl)
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD ["/usr/local/bin/aico", "version"]
