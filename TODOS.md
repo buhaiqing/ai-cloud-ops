@@ -50,14 +50,16 @@
 
 | # | 优先级 | 项目 | 描述 | 依赖 | 状态 |
 |---|---|---|---|---|---|
-| M3-1 | **P1** | **T16 — ActionTrail ingestion** | **Codex critical gap**：拉近期变更（10 min window）作为 AI 根因上下文 | Go Phase 3 跑通 | ⏸ |
-| M3-2 | **P1** | 结构化操作清单 | recommendations 从"通用文本"升级为可机读 JSON：每个操作带 command + preconditions + rollback | agent client 升级 | Go Phase 3 部分 |
-| M3-3 | **P1** | Dry-run 框架 | 所有"执行"操作先输出"将做什么"+ 风险评估；不真执行 | M3-2 | ⏸ |
-| M3-4 | **P1** | Human-in-the-loop 审核 | Web UI 展示 AI 报告 + "批准" / "修改" / "拒绝"按钮；写回 audit_log | M2 dashboard | ⏸ |
-| M3-5 | **P1** | "Execute" 工具白名单 | 受限操作清单：reboot ECS, scale RDS, restart service；每个有 rate limit + audit | M2 dashboard + IAM 权限最小化 | ⏸ |
-| M3-6 | **P2** | 操作回滚机制 | 每个 execute 操作记录 pre-state；失败时自动回滚 | M3-5 | ⏸ |
-| M3-7 | **P2** | M2 + M3 集成 E2E 测试 | webhook → DB → AI 分析（含 ActionTrail context）→ Dashboard → 用户审批 → 执行 → 回滚验证 | M2 + M3 完成 | ⏸ |
-| M3-8 | **P2** | Eval suite 完整化 | 10 → 30+ 样本；CI gate 严格执行（avg ≥ 18/25） | T9 + T13 baseline | Go Phase 3 部分 |
+| M3-1 | **P1** | **T16 — ActionTrail ingestion** | **Codex critical gap**：拉近期变更（10 min window）作为 AI 根因上下文 | Go Phase 3 跑通 | ⏸ 需要真实凭证 |
+| M3-2 | **P1** | 结构化操作清单 | recommendations 从"通用文本"升级为可机读 JSON：每个操作带 command + preconditions + rollback | agent client 升级 | 🚧 Subagent A 进行中 |
+| M3-3 | **P1** | Dry-run 框架 | 所有"执行"操作先输出"将做什么"+ 风险评估；不真执行 | M3-2 | 🚧 Subagent A 进行中 |
+| M3-4 | **P1** | Human-in-the-loop 审核 | Web UI 展示 AI 报告 + "批准" / "修改" / "拒绝"按钮；写回 audit_log | M2 dashboard | 🚧 Subagent C 进行中 |
+| M3-5 | **P1** | "Execute" 工具白名单 | 受限操作清单：reboot ECS, scale RDS, restart service；每个有 rate limit + audit | M2 dashboard + IAM 权限最小化 | 🚧 Subagent B 进行中 |
+| M3-6 | **P2** | 操作回滚机制 | 每个 execute 操作记录 pre-state；失败时自动回滚 | M3-5 | ⏸ 本会话不实现 |
+| M3-7 | **P2** | M2 + M3 集成 E2E 测试 | webhook → DB → AI 分析（含 ActionTrail context）→ Dashboard → 用户审批 → 执行 → 回滚验证 | M2 + M3 完成 | ⏸ 本会话不实现 |
+| M3-8 | **P2** | Eval suite 完整化 | 10 → 30+ 样本；CI gate 严格执行（avg ≥ 18/25） | T9 + T13 baseline | ⏸ 本会话不实现 |
+
+**本会话交付**：M3-2 + M3-3 + M3-5 + M3-4，4 项 P1。剩 4 项（M3-1/6/7/8）需后续 session 在有凭证/集成环境时补完。
 
 ---
 
@@ -131,3 +133,25 @@
 ---
 
 **最后更新**：T+5 周（M1 Python ✅ + Go Phase 1+2 ✅ + Phase 3 🚧）
+
+---
+
+## 🆕 M2-Hardening：并发回归防护（✅ 完成）
+
+> **背景**：M2 部署后，用户要求为高并发路径加测试。并发 bug 一旦生产出现，根因极难调试。
+
+| # | 子任务 | 状态 |
+|---|---|---|
+| H-1 | Hub 并发测试（ws_test.go：并发 Publish + Subscribe + 慢消费者） | ✅ 3 测试 pass under -race |
+| H-2 | Session Store 并发测试 | ✅ 5 测试 pass（Subagent A，8 goroutine × 1000 Issue → 8000 unique ID） |
+| H-3 | 状态机 + DB 转换并发测试 | ✅ 5 测试 pass（Subagent B，16 goroutine × 10k reads；map immutable 验证） |
+| H-4 | 前端 WS client + api client 并发测试 | ✅ 8 测试 pass（Subagent C，3 ws + 3 api 新增） |
+| H-5 | 文档更新（CI gate 强 -race + 新增 gotcha） | ✅ Makefile + backend-standards.md + gotchas.md 更新 |
+
+**总交付**：21 个新并发测试，全部 under `-race` clean。
+
+**最终验证**：
+- `go test -race -count=1 ./...` → 10 包全 0 race
+- `npx vitest run --no-coverage` (web/) → 7 files / 51 tests pass
+- `npx tsc --noEmit` (web/) → 0 error
+- `gofmt -l .` + `go vet ./...` → 0 issue

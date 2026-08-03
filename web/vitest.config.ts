@@ -15,6 +15,7 @@ export default defineConfig({
       // M2-5 + M2-8 (auth + ws client)
       'lib/auth.test.ts',
       'lib/ws.test.ts',
+      'lib/api.test.ts',
       'tests/login.test.tsx',
     ],
   },

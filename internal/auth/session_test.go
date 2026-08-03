@@ -4,6 +4,7 @@ package auth
 import (
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 )
 
@@ -205,5 +206,222 @@ func TestMiddleware_GetDoesNotRequireCSRF(t *testing.T) {
 	}
 	if !called {
 		t.Fatalf("handler should have run for GET without CSRF")
+	}
+}
+
+// --- Concurrency tests (race-prone paths) ---
+
+// TestStore_ConcurrentIssueProducesUniqueIDs — 8 goroutines issue 1000
+// sessions each; assert all 8000 IDs are distinct. Catches a degenerate
+// randHex that would collide under concurrent crypto/rand calls.
+func TestStore_ConcurrentIssueProducesUniqueIDs(t *testing.T) {
+	store := NewStore(false)
+	const goroutines = 8
+	const perG = 1000
+	total := goroutines * perG
+	ids := make(chan string, total)
+	var wg sync.WaitGroup
+	for g := 0; g < goroutines; g++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < perG; i++ {
+				s, err := store.Issue("user")
+				if err != nil {
+					t.Errorf("issue failed: %v", err)
+					return
+				}
+				ids <- s.ID
+			}
+		}()
+	}
+	wg.Wait()
+	close(ids)
+	seen := map[string]bool{}
+	for id := range ids {
+		seen[id] = true
+	}
+	if len(seen) != total {
+		t.Fatalf("got %d unique IDs, want %d", len(seen), total)
+	}
+}
+
+// TestStore_ConcurrentGetAndRevoke — 4 Get + 4 Revoke goroutines share a
+// 1000-session pool. No panics; no torn reads (every successful Get returns
+// a Session whose fields match the original Issue).
+func TestStore_ConcurrentGetAndRevoke(t *testing.T) {
+	store := NewStore(false)
+	const N = 1000
+	ids := make([]string, N)
+	for i := 0; i < N; i++ {
+		s, err := store.Issue("user")
+		if err != nil {
+			t.Fatalf("issue failed: %v", err)
+		}
+		ids[i] = s.ID
+	}
+	const iters = 5000
+	var wg sync.WaitGroup
+	for r := 0; r < 4; r++ {
+		wg.Add(1)
+		go func(seed int) {
+			defer wg.Done()
+			for i := 0; i < iters; i++ {
+				id := ids[(seed*1337+i)%N]
+				sess, ok := store.Get(id)
+				if !ok {
+					continue
+				}
+				if sess.ID != id || sess.User != "user" || sess.CSRF == "" || sess.CreatedAt.IsZero() {
+					t.Errorf("torn read for id=%s: %+v", id, sess)
+					return
+				}
+			}
+		}(r)
+	}
+	for w := 0; w < 4; w++ {
+		wg.Add(1)
+		go func(seed int) {
+			defer wg.Done()
+			for i := 0; i < iters; i++ {
+				store.Revoke(ids[(seed*997+i)%N])
+			}
+		}(w)
+	}
+	wg.Wait()
+	// Post-condition: every session still present is structurally consistent.
+	for _, id := range ids {
+		sess, ok := store.Get(id)
+		if !ok {
+			continue
+		}
+		if sess.ID != id || sess.User != "user" || sess.CSRF == "" || sess.CreatedAt.IsZero() {
+			t.Errorf("post-test corrupt session for id=%s: %+v", id, sess)
+		}
+	}
+}
+
+// TestStore_ConcurrentReadMostly — dashboard polling pattern: 10 readers
+// hammer Get on a stable 100-ID set while 1 writer revokes + re-issues.
+// Invariant: Get never returns a corrupted session (zero fields, ID mismatch).
+func TestStore_ConcurrentReadMostly(t *testing.T) {
+	store := NewStore(false)
+	const N = 100
+	const readerLoops = 100
+	ids := make([]string, N)
+	for i := 0; i < N; i++ {
+		s, err := store.Issue("user")
+		if err != nil {
+			t.Fatalf("issue failed: %v", err)
+		}
+		ids[i] = s.ID
+	}
+	var wg sync.WaitGroup
+	for r := 0; r < 10; r++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < readerLoops; i++ {
+				for _, id := range ids {
+					sess, ok := store.Get(id)
+					if !ok {
+						continue
+					}
+					if sess.ID != id || sess.User != "user" || sess.CSRF == "" || sess.CreatedAt.IsZero() {
+						t.Errorf("torn read for id=%s: %+v", id, sess)
+						return
+					}
+				}
+			}
+		}()
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 500; i++ {
+			store.Revoke(ids[i%N])
+			if _, err := store.Issue("user"); err != nil {
+				t.Errorf("writer issue failed: %v", err)
+				return
+			}
+		}
+	}()
+	wg.Wait()
+}
+
+// TestStore_RevokeDuringGet — race Get vs Revoke on the SAME session ID,
+// 10000 iterations. Either Get returns ok=false, or ok=true with fully
+// valid fields. A torn read would show zero User / zero CreatedAt / ID mismatch.
+func TestStore_RevokeDuringGet(t *testing.T) {
+	store := NewStore(false)
+	for iter := 0; iter < 10000; iter++ {
+		issued, err := store.Issue("alice")
+		if err != nil {
+			t.Fatalf("iter %d: issue failed: %v", iter, err)
+		}
+		var wg sync.WaitGroup
+		var getOK bool
+		var gotSess Session
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			sess, ok := store.Get(issued.ID)
+			getOK = ok
+			gotSess = sess
+		}()
+		go func() {
+			defer wg.Done()
+			store.Revoke(issued.ID)
+		}()
+		wg.Wait()
+		if !getOK {
+			continue
+		}
+		if gotSess.User == "" {
+			t.Fatalf("iter %d: empty User in returned session: %+v", iter, gotSess)
+		}
+		if gotSess.CreatedAt.IsZero() {
+			t.Fatalf("iter %d: zero CreatedAt in returned session: %+v", iter, gotSess)
+		}
+		if gotSess.CSRF == "" {
+			t.Fatalf("iter %d: empty CSRF in returned session: %+v", iter, gotSess)
+		}
+		if gotSess.ID != issued.ID {
+			t.Fatalf("iter %d: ID mismatch: got %q want %q", iter, gotSess.ID, issued.ID)
+		}
+	}
+}
+
+// TestStore_HighContentionCSRFUniqueness — 10000 Issue calls fanned across
+// 8 goroutines; assert every CSRF token is unique.
+func TestStore_HighContentionCSRFUniqueness(t *testing.T) {
+	store := NewStore(false)
+	const total = 10000
+	const goroutines = 8
+	const perG = total / goroutines
+	csrfCh := make(chan string, total)
+	var wg sync.WaitGroup
+	for g := 0; g < goroutines; g++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < perG; i++ {
+				s, err := store.Issue("user")
+				if err != nil {
+					t.Errorf("issue failed: %v", err)
+					return
+				}
+				csrfCh <- s.CSRF
+			}
+		}()
+	}
+	wg.Wait()
+	close(csrfCh)
+	seen := map[string]bool{}
+	for c := range csrfCh {
+		seen[c] = true
+	}
+	if len(seen) != total {
+		t.Fatalf("got %d unique CSRF tokens, want %d", len(seen), total)
 	}
 }

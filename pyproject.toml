@@ -14,7 +14,7 @@ dependencies = [
     # Alibaba Cloud SDK
     "alibabacloud_credentials>=0.3.7",
     "alibabacloud_sts20150401>=1.4.1",
-    "alibabacloud_cms20190101>=6.4.0",
+    "alibabacloud_cms20190101>=4.0.10",
     "alibabacloud_ecs20140526>=4.2.0",
     "alibabacloud_rds20140815>=3.2.0",
     # LLM

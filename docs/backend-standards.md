@@ -28,6 +28,7 @@ docs/backend-standards.md     # 本文件
 - `*_test.go` 与实现同包同目录
 - 集成测试（需要真 DB）：`//go:build integration` tag 隔离
 - 基准测试：`BenchmarkXxx` 同文件，PR 描述里给出前后对比
+- 并发测试：以 `_Concurrent` / `_Race` / `_HighContention` 结尾的函数名
 
 ### 2.2 风格
 
@@ -58,15 +59,44 @@ for _, tc := range tests {
 - 时间：注入 `func() time.Time`，测试时换 `func() time.Time { return fixedTime }`
 - Crypto：注入 `func([]byte) ([]byte, error)` 而不是 mock 整个 crypto 包
 
-### 2.4 跑测试
+### 2.4 并发测试规范 ⭐
+
+> **高并发路径必须**有专门的并发测试。理由：这类 bug 复现难、调试难、root cause 隐藏深。
+
+必须写并发测试的代码：
+
+| 路径 | 为什么 |
+|---|---|
+| `sync.Mutex` / `sync.RWMutex` 保护的数据结构 | 锁粒度错就是 race |
+| 全局 `map` / `slice` 读路径 | 读写并发不锁 → data race |
+| goroutine 启动 / 关闭 | goroutine leak + use-after-close |
+| Channel send/recv + select | drop policy / deadlock |
+| HTTP handler 中调 DB + 写响应 | 并发写同一资源状态错乱 |
+| State machine + DB 转换 | 两个请求同时转换同一 entity 状态 |
+
+测试模板：
+
+```go
+func TestX_ConcurrentAccessIsSafe(t *testing.T) {
+    // 1. 8+ goroutines，每个跑 1000+ 次
+    // 2. 跑 -race 必须 clean
+    // 3. 用 sync.WaitGroup + atomic 收集计数
+    // 4. 断言：最终状态合法 + 中间状态无负数
+}
+```
+
+### 2.5 跑测试
 
 ```bash
-go test -count=1 ./...                    # 全包，含 race 检测
-go test -count=1 -race ./internal/api/...  # 关键包加 race
-go test -tags integration ./...            # 集成测试
+go test -count=1 ./...                          # 本地快检查
+go test -count=1 -race ./...                     # **CI 必跑**（含并发路径）
+go test -count=1 -race -run 'Concurrent|Race' ./internal/api/...  # 只跑并发测试
+go test -tags integration ./...                  # 集成测试
 ```
 
 **CI 必跑**：`go test -count=1 -race ./...`
+
+**PR 合并门槛**：`go test -race ./...` 0 race + 0 failure 才允许 merge。
 
 ---
 

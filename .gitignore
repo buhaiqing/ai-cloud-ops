@@ -227,6 +227,7 @@ bin/
 # Tool state
 .omc/
 .gstack/
+.codegraph/
 
 # IDE
 .idea/
