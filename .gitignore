@@ -217,6 +217,13 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+# Go build artifacts
+aico
+aico-mcp
+bin/
+*.test
+*.out
+
 # Tool state
 .omc/
 .gstack/

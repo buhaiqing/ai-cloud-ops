@@ -1,0 +1,19 @@
+# ai-cloud-ops — accounts configuration (T3)
+# Copy to accounts.yaml and fill in your real values.
+# accounts.yaml is .gitignored (contains operational metadata, not secrets).
+
+accounts:
+  # Example: production account
+  prod:
+    role_arn: acs:ram::123456789:role/ai-cloud-ops
+    regions:
+      - cn-hangzhou
+      - cn-beijing
+    # Optional: override default endpoints (see internal/config/config.go)
+    endpoint_overrides: {}
+
+  # Example: staging account
+  staging:
+    role_arn: acs:ram::987654321:role/ai-cloud-ops
+    regions:
+      - cn-shanghai
