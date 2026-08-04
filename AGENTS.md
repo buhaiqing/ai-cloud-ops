@@ -43,6 +43,13 @@
 - 低复杂 / 机械任务 M3 直接做，不为保险起大模型
 - 机制：`~/.omp/agent/settings.json` `modelRoles.task` 默认 M3；特高复杂任务升级时临时把 task role 切 qwen3.8-max，完成后改回
 
+### 1.5 **Subagent 失败升级**
+- 同一 subagent 任务连续失败 **最多 3 次**（同 task、同 prompt、不同模型/参数）
+- 失败 3 次后 **停止重派**，自动切换主 agent 直做（`direct_exec`），不无限耗 token
+- 主 agent 直做完成后，**必须人工复核**（用户/owner）确认交付，再继续下一阶段
+- 失败计数维度：模型路由错误（401/403）、凭据过期、连续 3 次 timeout/cap-exceeded 算同一任务失败
+- 与 §1.4 模型选择的关系：失败升级是**横向兜底**（不同模型 / 切回主 agent），不是纵向叠加（不要在 3 次失败后还尝试第 4 个模型）
+
 ---
 
 ## 2. Karpathy 工程准则 ⭐⭐
