@@ -1,6 +1,6 @@
 {
-  "_comment": "AI 诊断基线样本集（T13）。Ported from tests/eval/baseline_samples.json (Python). Each sample is a typical Aliyun alert scenario; Judge evaluates AI output on the 5-dim scorecard (root cause accuracy, recommendation executability, evidence chain completeness, hallucination rate, response time). Modifications must keep baseline score >= 18/25 per tests in internal/eval/.",
-  "version": "0.1.0",
+  "_comment": "AI 诊断基线样本集（T13，M3-8 扩充至 30 样本）。Ported from tests/eval/baseline_samples.json (Python), extended with 20 Aliyun alert scenarios (ECS/RDS/Redis/MongoDB/SLB/VPC/K8s/Security/Edge). Each sample is a typical Aliyun alert scenario; Judge evaluates AI output on the 5-dim scorecard (root cause accuracy, recommendation executability, evidence chain completeness, hallucination rate, response time). Modifications must keep baseline score >= 18/25 per tests in internal/eval/.",
+  "version": "0.2.0",
   "samples": [
     {
       "id": "ecs-cpu-high-01",
@@ -223,6 +223,467 @@
       "expected_root_cause_keywords": ["无明确", "波动", "正常范围"],
       "expected_recommendation_type": "suppress_or_silence",
       "scoring_notes": "AI 应识别这是正常波动，建议抑制而非触发运维响应——这是考验 AI 不滥报"
+    },
+    {
+      "id": "ecs-mem-high-11",
+      "category": "ECS",
+      "difficulty": "easy",
+      "alert_payload": {
+        "alert_id": "alert-011",
+        "alert_name": "ECS_Memory_High",
+        "severity": "warning",
+        "resource_id": "i-bp1xxxxxxxxxx",
+        "region": "cn-hangzhou",
+        "metric": {
+          "namespace": "acs_ecs",
+          "metric_name": "MemoryUtilization",
+          "value": 93.5,
+          "threshold": 90.0,
+          "duration_minutes": 10
+        },
+        "tags": {"env": "prod", "service": "user-center"}
+      },
+      "expected_root_cause_keywords": ["内存", "持续", "高水位"],
+      "expected_recommendation_type": "restart_or_scale",
+      "scoring_notes": "简单内存压力场景，应定位内存持续高水位进程并建议重启/升配"
+    },
+    {
+      "id": "ecs-oom-kill-12",
+      "category": "ECS",
+      "difficulty": "medium",
+      "alert_payload": {
+        "alert_id": "alert-012",
+        "alert_name": "ECS_OOM_Kill",
+        "severity": "critical",
+        "resource_id": "i-bp1xxxxxxxxxx",
+        "region": "cn-shanghai",
+        "metric": {
+          "namespace": "acs_ecs",
+          "metric_name": "OOMKillCount",
+          "value": 3,
+          "threshold": 0,
+          "duration_minutes": 5
+        },
+        "tags": {"env": "prod", "service": "payment-worker"}
+      },
+      "expected_root_cause_keywords": ["OOM", "进程", "内存不足", "kill"],
+      "expected_recommendation_type": "restart_or_scale",
+      "scoring_notes": "应识别 OOM killer 杀掉的进程并关联内存用量，建议重启进程并评估升配"
+    },
+    {
+      "id": "ecs-agent-lost-13",
+      "category": "ECS",
+      "difficulty": "easy",
+      "alert_payload": {
+        "alert_id": "alert-013",
+        "alert_name": "ECS_CloudMonitor_Agent_Offline",
+        "severity": "warning",
+        "resource_id": "i-bp1xxxxxxxxxx",
+        "region": "cn-hangzhou",
+        "metric": {
+          "namespace": "acs_ecs",
+          "metric_name": "AgentStatus",
+          "value": "Offline",
+          "previous": "Online"
+        },
+        "tags": {"env": "staging", "service": "batch-node"}
+      },
+      "expected_root_cause_keywords": ["云监控", "agent", "失联", "进程"],
+      "expected_recommendation_type": "restart_or_scale",
+      "scoring_notes": "应区分 agent 进程崩溃与实例宕机，建议重启云监控 agent 恢复采集"
+    },
+    {
+      "id": "rds-replication-lag-14",
+      "category": "RDS",
+      "difficulty": "hard",
+      "alert_payload": {
+        "alert_id": "alert-014",
+        "alert_name": "RDS_Replication_Lag_High",
+        "severity": "critical",
+        "resource_id": "rm-bp1xxxxxxxxxx",
+        "region": "cn-shanghai",
+        "metric": {
+          "namespace": "acs_rds",
+          "metric_name": "SecondsBehindMaster",
+          "value": 120,
+          "threshold": 30,
+          "duration_minutes": 10
+        },
+        "tags": {"env": "prod", "service": "trade-db"}
+      },
+      "expected_root_cause_keywords": ["主从延迟", "binlog", "回放", "从库"],
+      "expected_recommendation_type": "scale_up",
+      "scoring_notes": "难场景：应分析从库 binlog 回放瓶颈（大事务/DDL），建议升配从库或重建只读实例"
+    },
+    {
+      "id": "rds-lock-wait-15",
+      "category": "RDS",
+      "difficulty": "medium",
+      "alert_payload": {
+        "alert_id": "alert-015",
+        "alert_name": "RDS_Lock_Wait_Surge",
+        "severity": "warning",
+        "resource_id": "rm-bp1xxxxxxxxxx",
+        "region": "cn-hangzhou",
+        "metric": {
+          "namespace": "acs_rds",
+          "metric_name": "InnoDBRowLockWaits",
+          "value": 85,
+          "threshold": 20,
+          "duration_minutes": 5
+        },
+        "tags": {"env": "prod", "service": "inventory-db"}
+      },
+      "expected_root_cause_keywords": ["锁等待", "长事务", "行锁", "阻塞"],
+      "expected_recommendation_type": "kill_blocking_query",
+      "scoring_notes": "应关联长事务/阻塞会话定位行锁源头，建议 kill 阻塞事务而非盲目扩容"
+    },
+    {
+      "id": "rds-disk-full-16",
+      "category": "RDS",
+      "difficulty": "medium",
+      "alert_payload": {
+        "alert_id": "alert-016",
+        "alert_name": "RDS_Disk_Usage_High",
+        "severity": "critical",
+        "resource_id": "rm-bp1xxxxxxxxxx",
+        "region": "cn-beijing",
+        "metric": {
+          "namespace": "acs_rds",
+          "metric_name": "DiskUsage",
+          "value": 94.0,
+          "threshold": 85.0,
+          "duration_minutes": 15
+        },
+        "tags": {"env": "prod", "service": "log-db"}
+      },
+      "expected_root_cause_keywords": ["磁盘", "binlog", "空间", "满"],
+      "expected_recommendation_type": "capacity_cleanup",
+      "scoring_notes": "应识别 binlog/临时表占用来源，建议清理 binlog 或扩容磁盘，避免实例被锁定"
+    },
+    {
+      "id": "redis-eviction-17",
+      "category": "Redis",
+      "difficulty": "medium",
+      "alert_payload": {
+        "alert_id": "alert-017",
+        "alert_name": "Redis_Key_Eviction_Surge",
+        "severity": "warning",
+        "resource_id": "r-bp1xxxxxxxxxx",
+        "region": "cn-hangzhou",
+        "metric": {
+          "namespace": "acs_kvstore",
+          "metric_name": "EvictedKeys",
+          "value": 320,
+          "threshold": 50,
+          "duration_minutes": 10
+        },
+        "tags": {"env": "prod", "service": "session-cache"}
+      },
+      "expected_root_cause_keywords": ["内存", "驱逐", "maxmemory", "淘汰"],
+      "expected_recommendation_type": "scale_up",
+      "scoring_notes": "应识别内存达到 maxmemory 触发 key 驱逐，建议升配内存或调整淘汰策略"
+    },
+    {
+      "id": "redis-bigkey-18",
+      "category": "Redis",
+      "difficulty": "medium",
+      "alert_payload": {
+        "alert_id": "alert-018",
+        "alert_name": "Redis_Big_Key_Detected",
+        "severity": "warning",
+        "resource_id": "r-bp1xxxxxxxxxx",
+        "region": "cn-shanghai",
+        "metric": {
+          "namespace": "acs_kvstore",
+          "metric_name": "MaxKeySizeMB",
+          "value": 512,
+          "threshold": 100,
+          "duration_minutes": 5
+        },
+        "tags": {"env": "prod", "service": "feed-cache"}
+      },
+      "expected_root_cause_keywords": ["大key", "阻塞", "单线程", "拆分"],
+      "expected_recommendation_type": "split_or_delete_bigkey",
+      "scoring_notes": "应识别大 key 在单线程模型下阻塞其他请求，建议拆分 key 或用 UNLINK 异步删除"
+    },
+    {
+      "id": "redis-conn-high-19",
+      "category": "Redis",
+      "difficulty": "easy",
+      "alert_payload": {
+        "alert_id": "alert-019",
+        "alert_name": "Redis_Connections_High",
+        "severity": "warning",
+        "resource_id": "r-bp1xxxxxxxxxx",
+        "region": "cn-hangzhou",
+        "metric": {
+          "namespace": "acs_kvstore",
+          "metric_name": "ConnectionUsage",
+          "value": 95.0,
+          "threshold": 80.0,
+          "duration_minutes": 5
+        },
+        "tags": {"env": "prod", "service": "cart-cache"}
+      },
+      "expected_root_cause_keywords": ["连接数", "连接池", "上限"],
+      "expected_recommendation_type": "connection_cleanup",
+      "scoring_notes": "简单场景：应识别连接数接近上限，建议清理泄漏连接并收敛客户端连接池配置"
+    },
+    {
+      "id": "mongo-slow-query-20",
+      "category": "MongoDB",
+      "difficulty": "medium",
+      "alert_payload": {
+        "alert_id": "alert-020",
+        "alert_name": "MongoDB_Slow_Query_Surge",
+        "severity": "warning",
+        "resource_id": "dds-bp1xxxxxxxxxx",
+        "region": "cn-beijing",
+        "metric": {
+          "namespace": "acs_mongodb",
+          "metric_name": "SlowQueries",
+          "value": 90,
+          "threshold": 30,
+          "duration_minutes": 10
+        },
+        "tags": {"env": "prod", "service": "content-db"}
+      },
+      "expected_root_cause_keywords": ["慢查询", "索引", "全表扫描"],
+      "expected_recommendation_type": "add_index_or_kill_query",
+      "scoring_notes": "应基于慢查询日志定位 COLLSCAN 并建议补索引、终止长耗时查询"
+    },
+    {
+      "id": "mongo-repl-lag-21",
+      "category": "MongoDB",
+      "difficulty": "hard",
+      "alert_payload": {
+        "alert_id": "alert-021",
+        "alert_name": "MongoDB_Replica_Lag_High",
+        "severity": "critical",
+        "resource_id": "dds-bp1xxxxxxxxxx",
+        "region": "cn-hangzhou",
+        "metric": {
+          "namespace": "acs_mongodb",
+          "metric_name": "ReplicaLagSeconds",
+          "value": 90,
+          "threshold": 30,
+          "duration_minutes": 15
+        },
+        "tags": {"env": "prod", "service": "iot-db"}
+      },
+      "expected_root_cause_keywords": ["副本集", "延迟", "oplog", "同步"],
+      "expected_recommendation_type": "scale_up",
+      "scoring_notes": "难场景：应分析 secondary oplog 回放/网络瓶颈，建议升配从节点或检查副本集网络"
+    },
+    {
+      "id": "slb-unhealthy-backend-22",
+      "category": "SLB",
+      "difficulty": "easy",
+      "alert_payload": {
+        "alert_id": "alert-022",
+        "alert_name": "SLB_Unhealthy_Backend",
+        "severity": "warning",
+        "resource_id": "lb-bp1xxxxxxxxxx",
+        "region": "cn-hangzhou",
+        "metric": {
+          "namespace": "acs_slb",
+          "metric_name": "UnhealthyServerCount",
+          "value": 3,
+          "threshold": 1,
+          "duration_minutes": 5
+        },
+        "tags": {"env": "prod", "tier": "backend"}
+      },
+      "expected_root_cause_keywords": ["后端服务器", "健康检查", "不健康"],
+      "expected_recommendation_type": "check_backend_health",
+      "scoring_notes": "简单场景：应定位不健康后端 ECS 并排查健康检查端口上的进程/安全组"
+    },
+    {
+      "id": "vpc-bandwidth-full-23",
+      "category": "VPC",
+      "difficulty": "medium",
+      "alert_payload": {
+        "alert_id": "alert-023",
+        "alert_name": "VPC_Bandwidth_Saturated",
+        "severity": "warning",
+        "resource_id": "eip-bp1xxxxxxxxxx",
+        "region": "cn-shanghai",
+        "metric": {
+          "namespace": "acs_vpc",
+          "metric_name": "BandwidthUsage",
+          "value": 98.0,
+          "threshold": 90.0,
+          "duration_minutes": 10
+        },
+        "tags": {"env": "prod", "service": "edge-egress"}
+      },
+      "expected_root_cause_keywords": ["带宽", "打满", "EIP", "限速"],
+      "expected_recommendation_type": "scale_up",
+      "scoring_notes": "应识别 EIP 带宽达到上限触发限速，建议提升带宽规格或共享带宽包分摊"
+    },
+    {
+      "id": "nat-port-exhausted-24",
+      "category": "VPC",
+      "difficulty": "hard",
+      "alert_payload": {
+        "alert_id": "alert-024",
+        "alert_name": "NAT_SNAT_Port_Exhausted",
+        "severity": "critical",
+        "resource_id": "ngw-bp1xxxxxxxxxx",
+        "region": "cn-shenzhen",
+        "metric": {
+          "namespace": "acs_nat_gateway",
+          "metric_name": "SnatConnectionUsage",
+          "value": 99.0,
+          "threshold": 90.0,
+          "duration_minutes": 5
+        },
+        "tags": {"env": "prod", "service": "outbound-proxy"}
+      },
+      "expected_root_cause_keywords": ["SNAT", "端口", "耗尽", "连接复用"],
+      "expected_recommendation_type": "scale_up",
+      "scoring_notes": "难场景：应识别 NAT 网关 SNAT 端口耗尽导致新建连接失败，建议增加 SNAT 条目/EIP 或升规格"
+    },
+    {
+      "id": "k8s-crashloop-25",
+      "category": "K8s",
+      "difficulty": "easy",
+      "alert_payload": {
+        "alert_id": "alert-025",
+        "alert_name": "K8s_Pod_CrashLoopBackOff",
+        "severity": "warning",
+        "resource_id": "c-bp1xxxxxxxxxx",
+        "region": "cn-hangzhou",
+        "metric": {
+          "namespace": "acs_k8s",
+          "metric_name": "PodRestartCount",
+          "value": 12,
+          "threshold": 5,
+          "duration_minutes": 15
+        },
+        "tags": {"env": "prod", "service": "order-svc"}
+      },
+      "expected_root_cause_keywords": ["CrashLoopBackOff", "重启", "镜像", "启动失败"],
+      "expected_recommendation_type": "check_recent_changes",
+      "scoring_notes": "应关联最近镜像/配置变更定位容器启动失败原因，而非直接扩容"
+    },
+    {
+      "id": "k8s-node-notready-26",
+      "category": "K8s",
+      "difficulty": "hard",
+      "alert_payload": {
+        "alert_id": "alert-026",
+        "alert_name": "K8s_Node_NotReady",
+        "severity": "critical",
+        "resource_id": "c-bp1xxxxxxxxxx",
+        "region": "cn-shanghai",
+        "metric": {
+          "namespace": "acs_k8s",
+          "metric_name": "NodeNotReadyCount",
+          "value": 2,
+          "threshold": 0,
+          "duration_minutes": 5
+        },
+        "tags": {"env": "prod", "service": "base-pool"}
+      },
+      "expected_root_cause_keywords": ["NotReady", "kubelet", "节点", "驱逐"],
+      "expected_recommendation_type": "restart_or_scale",
+      "scoring_notes": "难场景：应区分 kubelet 故障与节点网络隔离，建议重启 kubelet 并评估 Pod 驱逐/迁移"
+    },
+    {
+      "id": "sec-abnormal-login-27",
+      "category": "Security",
+      "difficulty": "medium",
+      "alert_payload": {
+        "alert_id": "alert-027",
+        "alert_name": "SAS_Abnormal_Login",
+        "severity": "critical",
+        "resource_id": "i-bp1xxxxxxxxxx",
+        "region": "cn-beijing",
+        "metric": {
+          "namespace": "acs_sas",
+          "metric_name": "AbnormalLoginEvents",
+          "value": 8,
+          "threshold": 1,
+          "duration_minutes": 30
+        },
+        "tags": {"env": "prod", "service": "bastion-target"}
+      },
+      "expected_root_cause_keywords": ["异常登录", "暴力破解", "SSH", "来源IP"],
+      "expected_recommendation_type": "security_lockdown",
+      "scoring_notes": "应识别 SSH 暴力破解/异地登录，建议改密并用安全组封禁来源 IP"
+    },
+    {
+      "id": "sec-ak-leak-28",
+      "category": "Security",
+      "difficulty": "medium",
+      "alert_payload": {
+        "alert_id": "alert-028",
+        "alert_name": "SAS_AccessKey_Leak",
+        "severity": "critical",
+        "resource_id": "LTAI5txxxxxxxxxx",
+        "region": "cn-hangzhou",
+        "metric": {
+          "namespace": "acs_sas",
+          "metric_name": "AccessKeyLeakEvents",
+          "value": 1,
+          "threshold": 0,
+          "duration_minutes": 0
+        },
+        "tags": {"env": "prod", "service": "ci-deploy"}
+      },
+      "expected_root_cause_keywords": ["AccessKey", "泄露", "轮转", "禁用"],
+      "expected_recommendation_type": "security_lockdown",
+      "scoring_notes": "应立即禁用泄露 AK 并轮转密钥，同时排查代码仓库等泄露渠道"
+    },
+    {
+      "id": "false-positive-flap-29",
+      "category": "Edge Case",
+      "difficulty": "easy",
+      "alert_payload": {
+        "alert_id": "alert-029",
+        "alert_name": "ECS_CPU_Flapping",
+        "severity": "info",
+        "resource_id": "i-bp1xxxxxxxxxx",
+        "region": "cn-shenzhen",
+        "metric": {
+          "namespace": "acs_ecs",
+          "metric_name": "CPUUtilization",
+          "value": 91.0,
+          "threshold": 90.0,
+          "duration_minutes": 1,
+          "flap_count": 6,
+          "avg_recovery_seconds": 45
+        },
+        "tags": {"env": "staging", "service": "load-test"}
+      },
+      "expected_root_cause_keywords": ["抖动", "误报", "阈值", "持续时长"],
+      "expected_recommendation_type": "noop",
+      "scoring_notes": "指标在阈值附近反复触发又快速恢复，AI 应判定为告警抖动并建议观察/调整规则，而非立即处置"
+    },
+    {
+      "id": "actiontrail-change-correlation-30",
+      "category": "Edge Case",
+      "difficulty": "hard",
+      "alert_payload": {
+        "alert_id": "alert-030",
+        "alert_name": "RDS_Active_Sessions_Spike",
+        "severity": "warning",
+        "resource_id": "rm-bp1xxxxxxxxxx",
+        "region": "cn-hangzhou",
+        "metric": {
+          "namespace": "acs_rds",
+          "metric_name": "MySQLActiveSessions",
+          "value": 85,
+          "threshold": 20,
+          "duration_minutes": 5
+        },
+        "tags": {"env": "prod", "service": "order-db"}
+      },
+      "expected_root_cause_keywords": ["变更", "ActionTrail", "参数", "最近"],
+      "expected_recommendation_type": "check_recent_changes",
+      "scoring_notes": "告警本身是普通会话飙升，但根因需关联 ActionTrail 最近变更（M3-1 上下文），应归因到近期参数/配置变更"
     }
   ]
 }

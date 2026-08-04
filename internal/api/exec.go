@@ -20,6 +20,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -94,6 +96,15 @@ type ExecStore interface {
 // listing) doesn't have to grow a no-op implementation.
 type ExecLister interface {
 	ListExecutions(ctx context.Context, account string, limit int) ([]ExecPlanRecord, error)
+}
+
+// ExecRollbackMarker is opt-in: stores that can flip successful audit rows
+// to 'rolled_back' satisfy it. Kept separate from ExecStore (like ExecLister)
+// so existing test fakes don't have to grow a no-op implementation.
+type ExecRollbackMarker interface {
+	// MarkAuditRolledBack flips audit rows with status='success' for the
+	// given exec and seqs to 'rolled_back'. Returns count updated.
+	MarkAuditRolledBack(ctx context.Context, execID int64, seqs []int) (int, error)
 }
 
 // Planner produces the dry-run plan handed to the human. *agent.Client
@@ -345,7 +356,6 @@ func execExecuteHandler(deps *Deps) http.HandlerFunc {
 			default:
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			}
-			return
 		}
 
 		exec := deps.ExecAction
@@ -354,7 +364,13 @@ func execExecuteHandler(deps *Deps) http.HandlerFunc {
 		}
 		completed := 0
 		failed := false
+		preStates := make([]json.RawMessage, 0, len(actions))
 		for i, a := range actions {
+			var preState json.RawMessage
+			if deps.ExecAction != nil {
+				preState, _, _ = deps.ExecAction(r.Context(), a)
+			}
+			preStates = append(preStates, preState)
 			postState, errMsg, ok := exec(r.Context(), a)
 			status := "success"
 			if !ok {
@@ -372,7 +388,35 @@ func execExecuteHandler(deps *Deps) http.HandlerFunc {
 			completed++
 		}
 		finalStatus := "completed"
-		if failed {
+		rolledBack := 0
+		if failed && completed > 0 && deps.RollbackAction != nil && os.Getenv("AICO_ROLLBACK_ENABLED") == "true" {
+			rolledSeqs := make([]int, 0, completed)
+			rollbackErrors := []string{}
+			for i := completed - 1; i >= 0; i-- {
+				_, rbErr, rbOK := deps.RollbackAction(r.Context(), actions[i], preStates[i])
+				if rbOK {
+					rolledSeqs = append(rolledSeqs, i+1)
+				} else {
+					rollbackErrors = append(rollbackErrors, fmt.Sprintf("action %d: %s", i+1, rbErr))
+				}
+			}
+			if len(rolledSeqs) > 0 {
+				if marker, ok := deps.ExecStore.(ExecRollbackMarker); ok {
+					if _, rbStoreErr := marker.MarkAuditRolledBack(r.Context(), id, rolledSeqs); rbStoreErr != nil {
+						rollbackErrors = append(rollbackErrors, rbStoreErr.Error())
+					}
+				} else {
+					slog.Warn("exec.rollback.store_marker_unavailable", "exec_id", id)
+				}
+			}
+			if len(rollbackErrors) == 0 {
+				finalStatus = "rolled_back"
+			} else {
+				slog.Warn("exec.rollback.partial_failure", "exec_id", id, "errors", rollbackErrors)
+			}
+			rolledBack = len(rolledSeqs)
+		}
+		if failed && finalStatus == "completed" {
 			finalStatus = "failed"
 		}
 		if err := deps.ExecStore.FinishExecution(r.Context(), id, finalStatus, completed); err != nil {
@@ -386,6 +430,7 @@ func execExecuteHandler(deps *Deps) http.HandlerFunc {
 			"actions_total": len(actions),
 			"completed":     completed,
 			"final_status":  finalStatus,
+			"rolled_back":   rolledBack,
 		})
 	}
 }

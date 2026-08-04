@@ -361,3 +361,24 @@ func decodeJSONMap(raw json.RawMessage) map[string]any {
 	}
 	return m
 }
+
+// MarkAuditRolledBack flips audit rows with status='success' for the given
+// exec and seqs to 'rolled_back'. Only the rows currently in 'success' are
+// affected; failed rows (the one that broke the run) are left untouched.
+// Returns the count of rows actually updated.
+func (s *pgxExecStore) MarkAuditRolledBack(ctx context.Context, execID int64, seqs []int) (int, error) {
+	if len(seqs) == 0 {
+		return 0, nil
+	}
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE exec_audit
+		    SET status = 'rolled_back', completed_at = now()
+		  WHERE exec_id = $1
+		    AND seq = ANY($2::int[])
+		    AND status = 'success'`,
+		execID, seqs)
+	if err != nil {
+		return 0, fmt.Errorf("mark audit rolled back: %w", err)
+	}
+	return int(tag.RowsAffected()), nil
+}

@@ -151,6 +151,7 @@
 | 迁移 | 新增 `db/migrations/NNNN_xxx.sql`，**永不**改已 ship 的 |
 | WS | 简单场景手写 RFC 6455（~50 行）替 `gorilla/websocket`；Hub `sync.RWMutex + map` |
 | 提交前 | `go build ./...` && `go test -count=1 ./...` && `gofmt -l .` 全 0 |
+| **`go fix`** | **代码改动完成后必须跑 `go fix ./...`，消化所有 diff（deprecated API 替换、import 重排、整型/字符串简化等）。有差异时提交前必须全部应用，0 残留才算完成；CI 在 lint 阶段跑一次 `gofix -diff ./...` 强制门禁** |
 
 ---
 
@@ -267,6 +268,7 @@
 - ❌ 改代码前不 `codegraph_codegraph_explore`（违反 9.1）
 - ❌ 违反 §1 三大方法论（TDD / subagents / GCL）
 - ❌ 违反 §2 Karpathy 四准则
+- ❌ 改完 Go 代码不跑 `go fix ./...` 就提交（即使 `gofmt` 通过，也必须把 `go fix` 报告的 diff 全部应用、提交）
 
 ---
 

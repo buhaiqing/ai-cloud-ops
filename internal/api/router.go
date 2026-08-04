@@ -31,6 +31,10 @@ type Deps struct {
 	ExecStore  ExecStore
 	Planner    Planner
 	ExecAction func(ctx context.Context, action agent.PlannedAction) (json.RawMessage, string, bool)
+	// M3-6: per-action rollback executor. Called in reverse order for
+	// completed actions when a later action fails. nil = rollback disabled
+	// (also requires AICO_ROLLBACK_ENABLED=true to be active).
+	RollbackAction func(ctx context.Context, action agent.PlannedAction, preState json.RawMessage) (json.RawMessage, string, bool)
 }
 
 // Public paths bypass the auth middleware. Stats stays public so dashboards

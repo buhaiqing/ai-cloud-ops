@@ -1,0 +1,70 @@
+{
+  "session": "2026-08-04",
+  "milestone": "M3-final",
+  "milestone_delivered": true,
+  "provider_combo": "aliyun-qwen38max+minimax-m27",
+  "planner_model": "aliyun-coding/qwen3.8-max",
+  "worker_model": "minimax-code-cn/MiniMax-M2.7",
+  "strategy": "gcl_serial_with_fanout",
+  "complexity": 7,
+  "batch_size": 3,
+  "concurrency": 3,
+  "phases": ["decompose", "gcl_interleave_gen", "gcl_interleave_critic", "aggregate"],
+  "milestone_slices": ["M3-1", "M3-6", "M3-7", "M3-8"],
+  "agents": [
+    {
+      "label": "gen-m3-1-actiontrail",
+      "agent": "task",
+      "model_used": "minimax-code-cn/MiniMax-M2.7 (via modelRoles.task)",
+      "purpose": "Implement internal/agent/context.go (ActionTrailFetcher interface + attachActionTrail) and mount in client.go; new context_test.go with 5 contract tests",
+      "outcome": "completed; 5 contract tests / 9 subtests pass; package race-clean; main-agent critic verified 0 defects"
+    },
+    {
+      "label": "gen-m3-6-rollback",
+      "agent": "task",
+      "model_used": "minimax-code-cn/MiniMax-M2.7 (via modelRoles.task)",
+      "purpose": "Implement ExecRollbackMarker opt-in interface + execExecuteHandler pre-state + reverse-order rollback + pgxExecStore.MarkAuditRolledBack + 6 contract tests in new rollback_test.go",
+      "outcome": "failed (mid-implementation; M2.7 quota exhausted at 30m); main agent completed: production code added, rollback_test.go rewritten with 6 tests, all pass under -race"
+    },
+    {
+      "label": "gen-m3-8-evalsamples",
+      "agent": "task",
+      "model_used": "minimax-code-cn/MiniMax-M2.7 (via modelRoles.task)",
+      "purpose": "Extend internal/eval/baseline_samples.json from 10 to 30 samples (version 0.2.0) + samples_test.go with 4 schema integrity tests",
+      "outcome": "completed; 30 samples (IDs unique, original 10 byte-identical, easy 6/medium 9/hard 5); 4 tests pass; main-agent critic verified 0 defects"
+    },
+    {
+      "label": "gen-m3-7-e2e",
+      "agent": "main (sequential after M3-6 landed)",
+      "model_used": "aliyun-coding/qwen3.8-max (main agent)",
+      "purpose": "M3-7 4-case E2E in internal/api/e2e_m3_test.go (webhook shape + happy path + rollback + ActionTrail context + rate-limit 429)",
+      "outcome": "completed; all 4 cases pass under -race; full HTTP chain via httptest + newExecRouter"
+    },
+    {
+      "label": "critic-main",
+      "agent": "main",
+      "model_used": "aliyun-coding/qwen3.8-max",
+      "purpose": "Independent verification: go test -race -count=1 ./... (10 packages), go fix, go vet, go build, npx tsc --noEmit, npx vitest run --no-coverage; contract alignment per M3-1/6/7/8 contracts; absorbed 2 failed specialist critic dispatches (401) + 1 failed task critic (429) per AGENTS.md §1.5",
+      "outcome": "all green; M3-FINAL-DELIVERY.md + TODOS.md updated; combo policy file registered"
+    }
+  ],
+  "fan_out_attempts": [
+    {"label": "critic-m3-1", "agent": "code-reviewer", "outcome": "failed (401 invalid x-api-key on anthropic route); main agent ran critic path directly"},
+    {"label": "critic-m3-8", "agent": "code-reviewer", "outcome": "failed (401 invalid x-api-key); main agent ran critic path directly"},
+    {"label": "critic-m3-1-r2", "agent": "task", "outcome": "failed (429 token quota exhausted on MiniMax-M2.7); absorbed by main agent"}
+  ],
+  "safety_gates": [
+    "gofmt -l on M3 files (rollback_test.go, e2e_m3_test.go, exec.go, exec_store.go, router.go, context.go, context_test.go, samples_test.go) → empty",
+    "go vet ./internal/api/ ./internal/agent/ ./internal/eval/ → 0",
+    "go test -race -count=1 ./... → 10 packages pass",
+    "go fix ./... → 0 output (no deprecated APIs)",
+    "cd web && npx tsc --noEmit → 0 errors",
+    "cd web && npx vitest run --no-coverage → 8 files / 67 tests pass"
+  ],
+  "deviations_from_brief": [
+    "M3-6 generator hit 30m runtime cap; main agent completed production code + tests. Outcome identical: 6 contract tests pass, race-clean, opt-in marker preserves exec_test.go memExecStore unchanged.",
+    "Critic specialist agents (`code-reviewer`) failed with 401 on the anthropic route; re-dispatched via the task route, then one of them hit a 429 quota. Main agent absorbed the critic path per AGENTS.md §1.5.",
+    "Provider combo `qwen3.8-max + MiniMax-M2.7` is a new (cross-provider) combination; registered at ~/.agents/skills/subagent-orchestrator/assets/provider_policies/aliyun-qwen38max+m27.md. Judge score pending — first in-flight use."
+  ],
+  "rationale": "M3-1/6/8 are independent in the Go source tree (internal/agent, internal/api, internal/eval) and were dispatched as a 3-way fan-out under GCL. M3-7 (e2e_m3_test.go) depends on M3-6's ExecRollbackMarker interface landing first, so it was held as Wave 2 and executed serially. The provider combo policy + the AGENTS.md GCL + TDD rules held: each contract was the single source of truth, each generator wrote tests first, the main agent ran the full gate independently and produced 0-defect verification on the two slices that completed via subagents."
+}

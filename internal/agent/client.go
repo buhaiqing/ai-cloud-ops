@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +32,8 @@ type Client struct {
 	// stub=true means Diagnose returns alert-payload-derived stub (no API call).
 	// Set by New() when apiKey is empty; tests use a mock messageClient.
 	stub bool
+	// actionTrail supplies recent change events (M3-1); nil = disabled.
+	actionTrail ActionTrailFetcher
 }
 
 // New creates an Anthropic-backed diagnosis client.
@@ -57,6 +60,13 @@ func New(pool *pgxpool.Pool, apiKey, model string) *Client {
 		model:           model,
 		messageClient:   &sdkClient.Messages,
 	}
+}
+
+// WithActionTrail attaches a change-context fetcher (nil = disabled).
+// Returns c for chaining.
+func (c *Client) WithActionTrail(f ActionTrailFetcher) *Client {
+	c.actionTrail = f
+	return c
 }
 
 // Diagnosis is the structured result returned by the AI Agent.
@@ -158,6 +168,7 @@ func (c *Client) runDiagnosis(ctx context.Context, alert map[string]any, dryRun 
 		started := time.Now()
 		d := stubDiagnosisFromAlert(alert, c.model)
 		d.LatencyMs = int(time.Since(started) / time.Millisecond)
+		c.attachActionTrail(ctx, d, alert)
 		return d, nil, nil, nil
 	}
 	started := time.Now()
@@ -230,13 +241,13 @@ func (c *Client) runDiagnosis(ctx context.Context, alert map[string]any, dryRun 
 			diagnosis.LatencyMs = int(time.Since(started) / time.Millisecond)
 			diagnosis.Model = c.model
 			diagnosis.PromptVersion = PromptVersion
+			c.attachActionTrail(ctx, diagnosis, alert)
 			return diagnosis, planned, blocked, nil
 		}
 
 		toolResults := make([]anthropic.ContentBlockParamUnion, len(toolUses))
 		group, groupCtx := errgroup.WithContext(ctx)
 		for i, toolUse := range toolUses {
-			i, toolUse := i, toolUse
 			group.Go(func() error {
 				if err := groupCtx.Err(); err != nil {
 					return fmt.Errorf("execute tool %s: %w", toolUse.Name, err)
@@ -328,12 +339,7 @@ func buildPlannedAction(tool Tool, toolUse anthropic.ToolUseBlock, preconditions
 }
 
 func contains(list []string, s string) bool {
-	for _, item := range list {
-		if item == s {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(list, s)
 }
 
 func (c *Client) lowConfidence(started time.Time, caveat string) *Diagnosis {

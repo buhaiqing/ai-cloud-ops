@@ -50,18 +50,16 @@
 
 | # | 优先级 | 项目 | 描述 | 依赖 | 状态 |
 |---|---|---|---|---|---|
-| M3-1 | **P1** | **T16 — ActionTrail ingestion** | **Codex critical gap**：拉近期变更（10 min window）作为 AI 根因上下文 | Go Phase 3 跑通 | ⏸ 需要真实凭证 |
+| M3-1 | **P1** | **T16 — ActionTrail ingestion** | **Codex critical gap**：拉近期变更（10 min window）作为 AI 根因上下文 | Go Phase 3 跑通 | ✅ internal/agent/context.go（ActionTrailFetcher 接口 + attachActionTrail 注入 EvidenceChains，fetcher=nil 时零行为变化） |
 | M3-2 | **P1** | 结构化操作清单 | recommendations 从"通用文本"升级为可机读 JSON：每个操作带 command + preconditions + rollback | agent client 升级 | ✅ internal/agent/client.go（DryRunResult/PlannedAction/Recommendation 扩展 + Client.DiagnoseDryRun） |
 | M3-3 | **P1** | Dry-run 框架 | 所有"执行"操作先输出"将做什么"+ 风险评估；不真执行 | M3-2 | ✅ internal/agent/client.go：DiagnoseDryRun 拦截 WRITE_TOOLS → PlannedAction；非白名单写入 blocked_by_policy |
 | M3-4 | **P1** | Human-in-the-loop 审核 | Web UI 展示 AI 报告 + "批准" / "修改" / "拒绝"按钮；写回 audit_log | M2 dashboard | ✅ web/app/analyses/[id]/page.tsx（ApproveBar + RejectModal）+ web/lib/exec.ts（plan/approve/execute client）；reject 是 local-only（contract-m3-4 by design） |
 | M3-5 | **P1** | "Execute" 工具白名单 | 受限操作清单：reboot ECS, scale RDS, restart service；每个有 rate limit + audit | M2 dashboard + IAM 权限最小化 | ✅ internal/agent/tools.go WRITE_TOOLS（4 工具）+ internal/api/exec.go（4 handlers + ExecStore 接口）+ internal/api/exec_store.go（pgxExecStore）+ db/migrations/0004_exec_plans.sql（exec_plans + exec_audit + EXEC_RATE_LIMIT env 默认 10/h） |
-| M3-6 | **P2** | 操作回滚机制 | 每个 execute 操作记录 pre-state；失败时自动回滚 | M3-5 | ⏸ 本会话不实现 |
-| M3-7 | **P2** | M2 + M3 集成 E2E 测试 | webhook → DB → AI 分析（含 ActionTrail context）→ Dashboard → 用户审批 → 执行 → 回滚验证 | M2 + M3 完成 | ⏸ 本会话不实现 |
-| M3-8 | **P2** | Eval suite 完整化 | 10 → 30+ 样本；CI gate 严格执行（avg ≥ 18/25） | T9 + T13 baseline | ⏸ 本会话不实现 |
+| M3-6 | **P2** | 操作回滚机制 | 每个 execute 操作记录 pre-state；失败时自动回滚 | M3-5 | ✅ internal/api/exec.go（pre-state 捕获 + AICO_ROLLBACK_ENABLED 反序回滚）+ opt-in ExecRollbackMarker（仿 ExecLister，不破坏现有 fake）+ pgxExecStore.MarkAuditRolledBack（SQL UPDATE）+ 6 个并发/顺序测试 |
+| M3-7 | **P2** | M2 + M3 集成 E2E 测试 | webhook → DB → AI 分析（含 ActionTrail context）→ Dashboard → 用户审批 → 执行 → 回滚验证 | M2 + M3 完成 | ✅ internal/api/e2e_m3_test.go（4 case：HappyPath/ExecuteFailure_Rollback/ActionTrailContextVisible/RateLimit429），全 HTTP chain，in-memory fakes |
+| M3-8 | **P2** | Eval suite 完整化 | 10 → 30+ 样本；CI gate 严格执行（avg ≥ 18/25） | T9 + T13 baseline | ✅ internal/eval/baseline_samples.json 10→30（version 0.2.0）+ 4 个 schema 完整性测试（AtLeast30/UniqueIDs/FieldIntegrity/StubSmoke_30Samples） |
 
-**本会话交付**：M3-2 + M3-3 + M3-5 + M3-4，4 项 P1。剩 4 项（M3-1/6/7/8）需后续 session 在有凭证/集成环境时补完。
-
-**本会话交付详情**：见 `audit-results/M3-DELIVERY.md`。全部 9 个 Go 包在 `go test -race -count=1 ./...` 下通过；web 8 vitest 文件 / 67 测试通过；`npx tsc --noEmit` 0 error。50 个 internal/api 测试（含 8 goroutine 并发 approve + 速率限制 + nil-store 503 回归）全部通过。剩余 M3-1/6/7/8 待真实凭证/集成环境。
+**M3 milestone 完成**：本会话（Wave 1 + Wave 2）交付 M3-1（ActionTrail 上下文注入）+ M3-2/3/4/5（结构化操作清单/Dry-run/HITL/Execute 白名单）+ M3-6（pre-state + opt-in 回滚 + opt-in ExecRollbackMarker）+ M3-7（HTTP E2E 4 case）+ M3-8（eval 10→30）。剩 M3 待办项：仅 M3-1 接真实阿里云 SDK（HTTP 客户端 + 签名），需凭证环境。
 
 ---
 
