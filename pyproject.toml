@@ -12,11 +12,11 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     # Alibaba Cloud SDK
-    "alibabacloud_credentials>=0.3.7",
-    "alibabacloud_sts20150401>=1.4.1",
-    "alibabacloud_cms20190101>=4.0.10",
-    "alibabacloud_ecs20140526>=4.2.0",
-    "alibabacloud_rds20140815>=3.2.0",
+    "alibabacloud_credentials",
+    "alibabacloud_sts20150401",
+    "alibabacloud_cms20190101",
+    "alibabacloud_ecs20140526",
+    "alibabacloud_rds20140815",
     # LLM
     "anthropic>=0.39.0",
     # Data

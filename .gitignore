@@ -253,5 +253,18 @@ secrets.json
 *.pem
 *.key
 
+
+# Session / runtime state (harness internals)
+.runtime/
+
+# Skill runtime artifacts
+docs/superpowers/
+
+# Node build cache
+web/node_modules/
+web/.next/
+web/.vite/
+web/tsconfig.tsbuildinfo
+.tsbuildinfo
 # Coverage reports
 coverage.xml
