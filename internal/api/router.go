@@ -4,6 +4,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/buhaiqing/ai-cloud-ops/internal/agent"
 	"github.com/buhaiqing/ai-cloud-ops/internal/auth"
 )
 
@@ -21,8 +23,14 @@ type Deps struct {
 	Hub  *Hub // M2-8
 	// M2-5: nil-safe. When nil, auth middleware is skipped and the auth
 	// handlers are not mounted (existing routing tests keep working).
-	Auth          *auth.Store
-	AuthHandlers  *auth.Handlers
+	Auth         *auth.Store
+	AuthHandlers *auth.Handlers
+	// M3-5: HITL execution. ExecStore is the persistence layer; Planner
+	// produces the dry-run plan handed to the human; ExecAction is the
+	// per-action executor (nil → defaultStubExecutor).
+	ExecStore  ExecStore
+	Planner    Planner
+	ExecAction func(ctx context.Context, action agent.PlannedAction) (json.RawMessage, string, bool)
 }
 
 // Public paths bypass the auth middleware. Stats stays public so dashboards
@@ -30,11 +38,11 @@ type Deps struct {
 // definition; WS is authed inside wsHandler (cookie + origin check) rather
 // than via the middleware to keep the upgrade request uninterrupted.
 var publicPaths = map[string]bool{
-	"/api/v1/ping":          true,
-	"/api/v1/stats":         true,
-	"/api/v1/auth/login":    true,
-	"/api/v1/auth/logout":   true,
-	"/api/v1/ws":            true,
+	"/api/v1/ping":        true,
+	"/api/v1/stats":       true,
+	"/api/v1/auth/login":  true,
+	"/api/v1/auth/logout": true,
+	"/api/v1/ws":          true,
 }
 
 // mountRoutes installs all /api/v1 routes on r. Safe to call with nil deps
@@ -68,10 +76,7 @@ func mountRoutes(r chi.Router, deps *Deps) {
 		// Rules CRUD — M2-4
 		sub.Get("/rules", listRulesHandler(deps))
 		sub.Post("/rules", createRuleHandler(deps))
-		sub.Put("/rules/{id}", updateRuleHandler(deps))
 		sub.Delete("/rules/{id}", deleteRuleHandler(deps))
-
-		// Incident lifecycle — M2-6
 		sub.Post("/incidents/{id}/ack", incidentTransitionHandler(deps, "acknowledged"))
 		sub.Post("/incidents/{id}/suppress", incidentTransitionHandler(deps, "suppressed"))
 		sub.Post("/incidents/{id}/maintenance", incidentTransitionHandler(deps, "maintenance"))
@@ -80,6 +85,13 @@ func mountRoutes(r chi.Router, deps *Deps) {
 
 		// Real-time — M2-8
 		sub.Get("/ws", wsHandler(deps))
+
+		// HITL execution — M3-5
+		sub.Post("/exec/plan", execPlanHandler(deps))
+		sub.Post("/exec/approve", execApproveHandler(deps))
+		sub.Post("/exec/{exec_id}/execute", execExecuteHandler(deps))
+		sub.Get("/exec/{exec_id}", execGetHandler(deps))
+		sub.Get("/executions", listExecutionsHandler(deps))
 	})
 }
 
@@ -100,12 +112,12 @@ func pingHandler(w http.ResponseWriter, r *http.Request) {
 func statsHandler(deps *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		out := map[string]any{
-			"total_alerts":       0,
-			"open_alerts":        0,
-			"ai_success_rate":    0.0,
-			"avg_latency_ms":     0,
-			"resources_covered":  0,
-			"generated_at":       time.Now().UTC(),
+			"total_alerts":      0,
+			"open_alerts":       0,
+			"ai_success_rate":   0.0,
+			"avg_latency_ms":    0,
+			"resources_covered": 0,
+			"generated_at":      time.Now().UTC(),
 		}
 		if deps == nil || deps.Pool == nil {
 			writeJSON(w, http.StatusOK, out)
@@ -182,12 +194,12 @@ func listResourcesHandler(deps *Deps) http.HandlerFunc {
 		}
 		defer rows.Close()
 		type res struct {
-			Account     string `json:"account"`
-			Region      string `json:"region"`
-			Type        string `json:"type"`
-			ID          string `json:"id"`
-			Name        string `json:"name"`
-			FetchedAt   string `json:"fetched_at"`
+			Account   string `json:"account"`
+			Region    string `json:"region"`
+			Type      string `json:"type"`
+			ID        string `json:"id"`
+			Name      string `json:"name"`
+			FetchedAt string `json:"fetched_at"`
 		}
 		out := []res{}
 		for rows.Next() {
@@ -235,14 +247,14 @@ func listAlertsHandler(deps *Deps) http.HandlerFunc {
 		}
 		defer rows.Close()
 		type alert struct {
-			ID         int64  `json:"id"`
-			AlertID    string `json:"alert_id"`
-			Account    string `json:"account"`
-			Region     string `json:"region"`
-			Severity   string `json:"severity"`
-			Status     string `json:"status"`
-			Name       string `json:"name"`
-			CreatedAt  string `json:"created_at"`
+			ID        int64  `json:"id"`
+			AlertID   string `json:"alert_id"`
+			Account   string `json:"account"`
+			Region    string `json:"region"`
+			Severity  string `json:"severity"`
+			Status    string `json:"status"`
+			Name      string `json:"name"`
+			CreatedAt string `json:"created_at"`
 		}
 		out := []alert{}
 		for rows.Next() {
@@ -268,7 +280,7 @@ func getAlertHandler(deps *Deps) http.HandlerFunc {
 		id := chi.URLParam(r, "id")
 		var (
 			alertID, account, region, severity, status, name string
-			createdAt                                          string
+			createdAt                                        string
 		)
 		err := deps.Pool.QueryRow(r.Context(),
 			`SELECT alert_id, account_alias, region, severity, status,
@@ -284,11 +296,11 @@ func getAlertHandler(deps *Deps) http.HandlerFunc {
 			`SELECT id, model, root_cause, latency_ms, created_at::text
 				FROM analyses WHERE alert_id=$1 ORDER BY created_at DESC LIMIT 5`, id)
 		type ana struct {
-			ID         int64  `json:"id"`
-			Model      string `json:"model"`
-			RootCause  string `json:"root_cause"`
-			LatencyMS  int    `json:"latency_ms"`
-			CreatedAt  string `json:"created_at"`
+			ID        int64  `json:"id"`
+			Model     string `json:"model"`
+			RootCause string `json:"root_cause"`
+			LatencyMS int    `json:"latency_ms"`
+			CreatedAt string `json:"created_at"`
 		}
 		linked := []ana{}
 		if aRows != nil {

@@ -24,6 +24,7 @@ export default function NavBar() {
           <Link href="/alerts" className="px-3 py-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800">Alerts</Link>
           <Link href="/resources" className="px-3 py-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800">Resources</Link>
           <Link href="/rules" className="px-3 py-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800">Rules</Link>
+          <Link href="/executions" className="px-3 py-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800">Executions</Link>
         </div>
         <div className="ml-auto flex items-center gap-2">
           <button

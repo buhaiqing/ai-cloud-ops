@@ -37,6 +37,12 @@
 - 任何 generator 输出必经过 critic 审查才 claim done
 - 失败时重派或细化 prompt；不轻易放过
 
+### 1.4 **Subagent 模型选择**
+- **中等复杂**开发任务 → **MiniMax M3**（`minimax-code-cn/MiniMax-M3`，subagent 默认模型）
+- **特别高复杂**任务（跨包重构 / 架构变更 / 难调试并发 bug）→ **qwen3.8-max**（`aliyun-coding/qwen3.8-max`）
+- 低复杂 / 机械任务 M3 直接做，不为保险起大模型
+- 机制：`~/.omp/agent/settings.json` `modelRoles.task` 默认 M3；特高复杂任务升级时临时把 task role 切 qwen3.8-max，完成后改回
+
 ---
 
 ## 2. Karpathy 工程准则 ⭐⭐

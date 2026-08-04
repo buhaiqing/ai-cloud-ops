@@ -1,0 +1,14 @@
+{
+  "strategy": "结构型",
+  "complexity": 18,
+  "batch_size": 2,
+  "concurrency": 2,
+  "phase": "P1",
+  "agents": [
+    {"label": "gen-m3-backend", "purpose": "M3-2+3+5: migration + DryRun + exec API + whitelist + rate limit (TDD)"},
+    {"label": "gen-m3-frontend", "purpose": "M3-4: exec.ts + analyses/executions pages + approve UI (TDD, contract-first)"}
+  ],
+  "safety_gates": [],
+  "rationale": "contracts 已落盘 → 前后端可真正并行；复杂度 3x3x2>10 → 分 8 phase；每 phase critic 独立验证",
+  "trace_path": "/Users/bohaiqing/test/ai_agent/fff/audit-results/gcl-trace-20260804-063800.json"
+}

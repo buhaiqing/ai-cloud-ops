@@ -17,6 +17,8 @@ export default defineConfig({
       'lib/ws.test.ts',
       'lib/api.test.ts',
       'tests/login.test.tsx',
+      // M3-4 (HITL approval UI)
+      'tests/exec.test.tsx',
     ],
   },
   // Next.js' tsconfig.json uses "jsx": "preserve", which esbuild would respect,

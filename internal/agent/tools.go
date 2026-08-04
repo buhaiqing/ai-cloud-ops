@@ -17,6 +17,10 @@ type Tool struct {
 	AliyunService string
 	APIAction     string
 	Description   string
+	// M3 write-tool safety metadata (zero-valued for read-only tools).
+	Risk             string // low | medium | high
+	Rollback         string // how to undo; "n/a..." when not reversible
+	RateLimitPerHour int    // per-account execution cap
 }
 
 // READ_ONLY_TOOLS is the M1 tool whitelist. No mutating action is exposed.
@@ -93,6 +97,53 @@ var READ_ONLY_TOOLS = []Tool{
 	},
 }
 
+// WRITE_TOOLS is the M3-5 execution whitelist. These tools are NEVER executed
+// directly: DiagnoseDryRun intercepts them into PlannedActions, and only an
+// approved exec plan may run them through the (stub) executor.
+// Source of truth: audit-results/contract-m3-5.md write_tools_whitelist.
+var WRITE_TOOLS = []Tool{
+	{
+		Name:             "restart_ecs_instance",
+		Category:         Write,
+		AliyunService:    "ECS",
+		APIAction:        "RebootInstance",
+		Description:      "Reboot an ECS instance to recover from OS-level hangs.",
+		Risk:             "medium",
+		Rollback:         "n/a (transient reboot)",
+		RateLimitPerHour: 5,
+	},
+	{
+		Name:             "scale_rds_instance",
+		Category:         Write,
+		AliyunService:    "RDS",
+		APIAction:        "ModifyDBInstanceSpec",
+		Description:      "Scale an RDS instance spec up/down to relieve saturation.",
+		Risk:             "high",
+		Rollback:         "ModifyDBInstanceSpec (downgrade)",
+		RateLimitPerHour: 2,
+	},
+	{
+		Name:             "restart_rds_instance",
+		Category:         Write,
+		AliyunService:    "RDS",
+		APIAction:        "RestartDBInstance",
+		Description:      "Restart an RDS instance to reset connections / clear stalls.",
+		Risk:             "medium",
+		Rollback:         "n/a",
+		RateLimitPerHour: 3,
+	},
+	{
+		Name:             "remove_ecs_from_slb",
+		Category:         Write,
+		AliyunService:    "SLB",
+		APIAction:        "RemoveBackendServers",
+		Description:      "Remove a backend ECS from an SLB to stop routing traffic to it.",
+		Risk:             "medium",
+		Rollback:         "AddBackendServers",
+		RateLimitPerHour: 5,
+	},
+}
+
 // ToolNotAllowedError reports an attempted call outside the whitelist.
 type ToolNotAllowedError struct {
 	Name string
@@ -122,10 +173,41 @@ func Get(name string) (Tool, bool) {
 	return Tool{}, false
 }
 
-// AllToolSpecsForLLM returns Anthropic custom-tool definitions.
+// IsWriteAllowed reports whether name belongs to the M3-5 WRITE_TOOLS whitelist.
+func IsWriteAllowed(name string) bool {
+	_, ok := GetWriteTool(name)
+	return ok
+}
+
+// GetWriteTool returns a whitelisted write tool by name.
+func GetWriteTool(name string) (Tool, bool) {
+	for _, tool := range WRITE_TOOLS {
+		if tool.Name == name {
+			return tool, true
+		}
+	}
+	return Tool{}, false
+}
+
+// AllToolSpecsForLLM returns Anthropic custom-tool definitions for the
+// read-only M1 surface (used by Diagnose; unchanged).
 func AllToolSpecsForLLM() []map[string]any {
-	specs := make([]map[string]any, 0, len(READ_ONLY_TOOLS))
-	for _, tool := range READ_ONLY_TOOLS {
+	return toolSpecs(READ_ONLY_TOOLS)
+}
+
+// AllToolSpecsForLLMWithWrite returns read-only + WRITE_TOOLS specs. Used by
+// DiagnoseDryRun so the model may propose whitelisted write actions, which
+// are intercepted into PlannedActions instead of executed.
+func AllToolSpecsForLLMWithWrite() []map[string]any {
+	all := make([]Tool, 0, len(READ_ONLY_TOOLS)+len(WRITE_TOOLS))
+	all = append(all, READ_ONLY_TOOLS...)
+	all = append(all, WRITE_TOOLS...)
+	return toolSpecs(all)
+}
+
+func toolSpecs(tools []Tool) []map[string]any {
+	specs := make([]map[string]any, 0, len(tools))
+	for _, tool := range tools {
 		specs = append(specs, map[string]any{
 			"name":        tool.Name,
 			"description": tool.Description,

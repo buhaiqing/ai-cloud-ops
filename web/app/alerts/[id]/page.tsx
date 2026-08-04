@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { api } from '../../../lib/api';
 
@@ -102,6 +103,13 @@ export default function AlertDetailPage() {
             {a.model} · {a.latency_ms}ms · {new Date(a.created_at).toLocaleString()}
           </div>
           <div className="font-medium">{a.root_cause}</div>
+          <Link
+            href={`/analyses/${a.id}`}
+            data-testid={`analysis-link-${a.id}`}
+            className="text-sm text-blue-600 underline"
+          >
+            View diagnosis →
+          </Link>
         </div>
       ))}
     </section>

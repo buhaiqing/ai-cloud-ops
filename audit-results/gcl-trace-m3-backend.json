@@ -1,0 +1,44 @@
+{
+  "strategy": "gcl_serial",
+  "complexity": 8,
+  "batch_size": 1,
+  "concurrency": 1,
+  "phase": "P1",
+  "milestone": "M3",
+  "sub_features": ["M3-2", "M3-3", "M3-4", "M3-5"],
+  "agents": [
+    {
+      "label": "gen-exec-backend-2",
+      "agent": "task",
+      "purpose": "Implement internal/api/exec.go + exec_store.go (pgxExecStore against 0004) + wire 5 routes in router.go",
+      "model_used": "minimax-code-cn/MiniMax-M2.7 (via modelRoles.task)",
+      "outcome": "completed; 50 internal/api tests pass under -race; gofmt clean; go vet clean"
+    },
+    {
+      "label": "critic-main",
+      "agent": "main",
+      "purpose": "Independent verification: go test -race -count=1 ./... (10 packages), go vet, go build, npx tsc --noEmit, npx vitest run --no-coverage",
+      "outcome": "all green; contract alignment verified; delivery doc + audit-results/M3-DELIVERY.md written"
+    }
+  ],
+  "fan_out_attempts": [
+    {"label": "write-m3-delivery", "agent": "writer", "outcome": "failed (401 invalid x-api-key on anthropic/claude-opus-4-6 fallback); fallback to main agent direct write"},
+    {"label": "audit-m3-contract", "agent": "quality-reviewer", "outcome": "failed (401 invalid x-api-key); contract alignment merged into M3-DELIVERY.md by main agent"}
+  ],
+  "safety_gates": [
+    "gofmt -l internal/api/exec.go internal/api/exec_store.go internal/api/router.go → empty",
+    "go vet ./... → 0",
+    "go test -race -count=1 ./internal/api/ → 50 tests pass, 0 race",
+    "go test -race -count=1 ./... → 9 packages pass",
+    "cd web && npx tsc --noEmit → 0",
+    "cd web && npx vitest run --no-coverage → 8 files / 67 tests pass"
+  ],
+  "deviations_from_brief": [
+    "Subagent's expertModel route (anthropic/claude-opus-4-6) had a stale API key; resolved by routing through modelRoles.task → MiniMax-M2.7 after first failure.",
+    "Generator subagent added a minimal fix to internal/api/exec_test.go's authedRequest helper (variadic body) — necessary for the file to compile; no test semantics changed.",
+    "Generator subagent produced an extra file internal/api/exec_store.go (sibling of exec.go) for the pgx-backed store; same package, keeps exec.go focused on handlers + interfaces.",
+    "Pre-existing gofmt drift in router.go was normalized (formatting only, no behavior change)."
+  ],
+  "rationale": "Backend slice is one cohesive implementation (single Go package internal/api); natural fit for serial GCL with 1 Generator + Critic. Frontend was already shipped in prior checkpoint and re-validated here. Remaining wrap-up (TODOS, delivery doc, commit) is single-task work that direct_exec handles faster than any fan-out.",
+  "trace_path": "/Users/bohaiqing/test/ai_agent/fff/audit-results/gcl-trace-m3-backend.json"
+}
