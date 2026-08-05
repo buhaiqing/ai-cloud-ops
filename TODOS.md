@@ -1,6 +1,6 @@
 # TODOS
 
-> 完整项目级 TODO tracker。最后更新：T+5 周（M1 Python 完成 + Go Phase 1+2 完成 + Phase 3 进行中）
+> 完整项目级 TODO tracker。最后更新：T+7 周（M1 Python ✅ + Go 重写 M1/M2/M3 全 milestone ✅ + 待启动 5 真实用户验证）
 
 **优先级图例**：
 - **P0** — 阻塞 ship / 不可妥协的安全问题
@@ -10,7 +10,7 @@
 
 ---
 
-## 当前状态（T+5 周）
+## 当前状态（T+7 周）
 
 | 阶段 | 状态 | Commit |
 |---|---|---|
@@ -19,15 +19,13 @@
 | M1 (Python) — T9 eval gate | ⏸ 未跑（无 ANTHROPIC_API_KEY） | — |
 | **Go bootstrap** | ✅ config + credentials, 14 tests pass | `24b611e` |
 | **Go Phase 2** | ✅ db + webhook + worker + Dockerfile, all tests pass | `86a7d75` |
-| **Go Phase 3** (AI Agent + eval + MCP) | 🚧 3 subagents running | TBD |
+| **Go Phase 3** (AI Agent + eval + MCP) | ✅ 完成 | `dceeddd` + `e98026d` |
 
-**双轨进行中**：Python 完整 M1（等本地验证）+ Go 重写（Phase 3 in flight）。
+**当前状态**：M1 + M2 + M3 全 milestone 完成（Python 兼容期 + Go 主线）。剩 REVIEW-1（5 真实用户验证）作为 M4 启动门。
 
 ---
 
 ## M2 — Web Dashboard MVP（4 周）
-
-设计参考：[design.md § Milestone 2](./design.md) + plan-eng-review T15 / T17
 
 | # | 优先级 | 项目 | 描述 | 依赖 | 状态 |
 |---|---|---|---|---|---|
@@ -86,9 +84,9 @@
 
 | # | 来源 | 优先级 | 描述 | 状态 |
 |---|---|---|---|---|
-| REVIEW-1 | Codex | **P0** | P1/P2 是断言不是验证——M2 启动前需要用户验证（5 个真实用户试用） | ⏸ 等 MCP checkpoint + M2 用户 |
+| REVIEW-1 | Codex | **P0** | P1/P2 是断言不是验证——M2 启动前需要用户验证（5 个真实用户试用） | ⏸ 文档就绪（staging-deploy-runbook.md + user-onboarding.md + review1-user-trial-template.md）；待 staging 环境 + 凭证启动 |
 | REVIEW-2 | Claude + Codex | **P1** | "AI 诊断" 必须可衡量（精度/可执行率/零幻觉率/响应时间） | ✅ T13 done + T9 eval gate scaffold |
-| REVIEW-3 | Claude + Codex | **P2** | MCP 验证关卡：M1 完成后用 1 周做 MCP 最小原型 A/B test，决定 M2/M3 是否切 MCP | ✅ Python MCP done + 🚧 Go Phase 3 含 MCP server |
+| REVIEW-3 | Claude + Codex | **P2** | MCP 验证关卡：M1 完成后用 1 周做 MCP 最小原型 A/B test，决定 M2/M3 是否切 MCP | ✅ Python MCP done + Go MCP done（5d8b250） |
 | REVIEW-4 | Codex | **P1** | 2 周 MVP 不现实——M1 已重定义为 4 周 | ✅ T+5 周达成（原计划 4 周） |
 | REVIEW-5 | Codex | **P1** | 没有 kill criterion——T18 (M4-2) 在 M2 前必须定 | ✅ done |
 
@@ -118,26 +116,20 @@
 | ✓ | **T18 — kill criterion + retention (Python)** | REVIEW-5 | `9d95a03` |
 | ✓ | **Go bootstrap** (config + credentials, 14 tests) | 用户决定切 Go | `24b611e` |
 | ✓ | **Go Phase 2** (db + webhook + worker + Dockerfile) | 用户决定切 Go | `86a7d75` |
-| 🚧 | **Go Phase 3** (AI Agent + eval + MCP) — 3 subagents running | — | TBD |
-
+| ✅ | **Go Phase 3** (AI Agent + eval + MCP) | M3 启动前置 | `dceeddd` + `e98026d` + `5d8b250` |
+| ✅ | **M3 milestone** (ActionTrail + rollback + E2E + eval 30+) | M3 | `5d8b250` |
 ---
 
 ## 已知风险 / 阻塞
 
 1. **本地验证缺失** — Python 版无 uv / ANTHROPIC_API_KEY / 真实阿里云凭证 → 无法本地端到端测试
-2. **Go Phase 3 还没完成** — AI Agent + MCP 在 Go 里还没写完，Python 仍是当前能跑的版本
-3. **MCP A/B test 没真实用户** — Python MCP server 已写但没人在 Claude Desktop / Cursor 跑过
-4. **AI 评估未跑通** — 10 个基线样本 + LLM-as-judge 框架在两边（Py+Go）都有，但没真跑过任何一次真实 eval
-5. **Python vs Go 行为一致性没验证** — 两个版本应该行为一致（TTL=2700s、refresh_margin=300s 等），但没有 cross-runtime 测试
-
----
-
-**最后更新**：T+5 周（M1 Python ✅ + Go Phase 1+2 ✅ + Phase 3 🚧）
+2. **MCP A/B test 没真实用户** — Python + Go MCP server 都已写，但没人在 Claude Desktop / Cursor 跑过
+3. **AI 评估未跑通** — 30 个基线样本 + LLM-as-judge 框架在两边（Py+Go）都有，但没真跑过任何一次真实 eval
+4. **Python vs Go 行为一致性没验证** — 两个版本应该行为一致（TTL=2700s、refresh_margin=300s 等），但没有 cross-runtime 测试
 
 ---
 
 ## 🆕 M2-Hardening：并发回归防护（✅ 完成）
-
 > **背景**：M2 部署后，用户要求为高并发路径加测试。并发 bug 一旦生产出现，根因极难调试。
 
 | # | 子任务 | 状态 |
