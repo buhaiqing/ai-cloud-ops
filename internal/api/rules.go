@@ -23,6 +23,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -246,12 +247,12 @@ func validateRuleReq(req CreateRuleReq) error {
 }
 
 func joinComma(parts []string) string {
-	out := ""
+	var out strings.Builder
 	for i, p := range parts {
 		if i > 0 {
-			out += ", "
+			out.WriteString(", ")
 		}
-		out += p
+		out.WriteString(p)
 	}
-	return out
+	return out.String()
 }

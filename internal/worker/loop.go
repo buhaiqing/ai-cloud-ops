@@ -89,11 +89,9 @@ func (w *Worker) Start(ctx context.Context) error {
 
 	runCtx, cancel := context.WithCancel(ctx)
 	w.cancel = cancel
-	w.wg.Add(1)
-	go func() {
-		defer w.wg.Done()
+	w.wg.Go(func() {
 		w.Run(runCtx)
-	}()
+	})
 	return nil
 }
 

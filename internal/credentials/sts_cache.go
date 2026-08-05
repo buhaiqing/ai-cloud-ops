@@ -23,8 +23,8 @@ import (
 )
 
 const (
-	DefaultTTLSeconds      = 2700
-	DefaultRefreshMargin   = 300
+	DefaultTTLSeconds         = 2700
+	DefaultRefreshMargin      = 300
 	stsCacheRefreshSkewBuffer = 30 // small buffer for clock skew
 )
 
@@ -70,11 +70,11 @@ func init() {
 
 // StsTokenCache is an in-process LRU-style cache for STS tokens.
 type StsTokenCache struct {
-	assumer        STSAssumer
-	ttl            time.Duration
-	refreshMargin  time.Duration
-	clock          func() time.Time // injectable for tests
-	logger         *zap.Logger
+	assumer       STSAssumer
+	ttl           time.Duration
+	refreshMargin time.Duration
+	clock         func() time.Time // injectable for tests
+	logger        *zap.Logger
 
 	mu    sync.Mutex
 	store map[string]*stsEntry
@@ -100,7 +100,7 @@ func New(assumer STSAssumer, logger *zap.Logger) *StsTokenCache {
 		clock:         time.Now,
 		logger:        logger,
 		store:         make(map[string]*stsEntry),
-		sfGroup:        singleflight{},
+		sfGroup:       singleflight{},
 	}
 }
 
@@ -119,8 +119,8 @@ func (c *StsTokenCache) Get(ctx context.Context, account, roleARN string) (*StsC
 	cacheMisses.WithLabelValues(account).Inc()
 
 	// Singleflight: collapse concurrent fetches
-	creds, err, _ := c.sfGroup.Do(account, func() (interface{}, error) {
-		return c.assumer.AssumeRole(ctx, account, roleARN, int((c.ttl+c.refreshMargin).Seconds()))
+	creds, err, _ := c.sfGroup.Do(account, func() (any, error) {
+		return c.assumer.AssumeRole(ctx, account, roleARN, int((c.ttl + c.refreshMargin).Seconds()))
 	})
 	if err != nil {
 		return nil, fmt.Errorf("assume role: %w", err)

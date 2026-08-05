@@ -159,22 +159,18 @@ func TestHub_ConcurrentPublishAndSubscribe(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Publishers: hammer Publish from many goroutines.
-	for i := 0; i < 4; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := 0; j < ITER; j++ {
+	for range 4 {
+		wg.Go(func() {
+			for range ITER {
 				h.Publish(Event{Type: "alert.new"})
 			}
-		}()
+		})
 	}
 
 	// Subscribers: rapidly add/remove clients.
-	for i := 0; i < 4; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := 0; j < ITER; j++ {
+	for range 4 {
+		wg.Go(func() {
+			for range ITER {
 				c := &wsConn{}
 				ch := make(chan Event, 4)
 				h.mu.Lock()
@@ -189,7 +185,7 @@ func TestHub_ConcurrentPublishAndSubscribe(t *testing.T) {
 				delete(h.clients, c)
 				h.mu.Unlock()
 			}
-		}()
+		})
 	}
 
 	// Counter: track ClientCount stability (no negative, no goroutine leak).
@@ -231,7 +227,7 @@ func TestHub_PublishDoesNotBlockOnSlowConsumer(t *testing.T) {
 	// Publish many events; must not block even though slow is unread.
 	done := make(chan struct{})
 	go func() {
-		for i := 0; i < 1000; i++ {
+		for range 1000 {
 			h.Publish(Event{Type: "flood"})
 		}
 		close(done)
@@ -263,11 +259,9 @@ func TestHub_ConcurrentClientCountNeverNegative(t *testing.T) {
 	// ClientCount must always be >= 0 and eventually 0.
 	h := NewHub()
 	var wg sync.WaitGroup
-	for g := 0; g < 8; g++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := 0; i < 1000; i++ {
+	for range 8 {
+		wg.Go(func() {
+			for range 1000 {
 				c := &wsConn{}
 				ch := make(chan Event, 1)
 				h.mu.Lock()
@@ -280,17 +274,10 @@ func TestHub_ConcurrentClientCountNeverNegative(t *testing.T) {
 					t.Errorf("ClientCount went negative: %d", n)
 				}
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	if h.ClientCount() != 0 {
 		t.Errorf("expected 0 after cleanup, got %d", h.ClientCount())
 	}
-}
-
-func max(a, b int64) int64 {
-	if a > b {
-		return a
-	}
-	return b
 }

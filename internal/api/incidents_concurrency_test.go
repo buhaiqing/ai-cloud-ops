@@ -6,6 +6,7 @@
 package api
 
 import (
+	"maps"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
@@ -42,9 +43,7 @@ func snapshotFull() map[string]map[string]bool {
 	out := make(map[string]map[string]bool, len(validTransitions))
 	for k, v := range validTransitions {
 		inner := make(map[string]bool, len(v))
-		for kk, vv := range v {
-			inner[kk] = vv
-		}
+		maps.Copy(inner, v)
 		out[k] = inner
 	}
 	return out
@@ -69,7 +68,7 @@ func TestCanTransition_ConcurrentReadsAreSafe(t *testing.T) {
 
 	var wg sync.WaitGroup
 	wg.Add(goroutines)
-	for g := 0; g < goroutines; g++ {
+	for g := range goroutines {
 		go func(start int) {
 			defer wg.Done()
 			for i := start; i < iterations; i += goroutines {
@@ -92,10 +91,10 @@ func TestCanTransition_ValidTransitionsMapImmutable(t *testing.T) {
 	const goroutines = 16
 	var wg sync.WaitGroup
 	wg.Add(goroutines)
-	for g := 0; g < goroutines; g++ {
+	for range goroutines {
 		go func() {
 			defer wg.Done()
-			for i := 0; i < 10_000; i++ {
+			for range 10_000 {
 				for k, v := range validTransitions {
 					_ = k
 					_ = v
@@ -187,7 +186,7 @@ func TestStateMachine_RaceHeavyWalk(t *testing.T) {
 
 	var wg sync.WaitGroup
 	wg.Add(goroutines)
-	for g := 0; g < goroutines; g++ {
+	for g := range goroutines {
 		go func(idx int) {
 			defer wg.Done()
 			path := paths[idx]
@@ -212,10 +211,10 @@ func TestValidTransitions_ConsistentUnderConcurrency(t *testing.T) {
 	const goroutines = 16
 	var wg sync.WaitGroup
 	wg.Add(goroutines)
-	for g := 0; g < goroutines; g++ {
+	for range goroutines {
 		go func() {
 			defer wg.Done()
-			for i := 0; i < 5000; i++ {
+			for range 5000 {
 				for from, allowed := range validTransitions {
 					for to := range allowed {
 						_ = canTransition(from, to)

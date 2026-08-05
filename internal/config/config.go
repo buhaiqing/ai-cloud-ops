@@ -14,6 +14,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"slices"
 
 	"gopkg.in/yaml.v3"
 )
@@ -50,10 +51,8 @@ func Load(path string) (*Config, error) {
 		if len(acct.Regions) == 0 {
 			return nil, fmt.Errorf("account %q: regions is empty", alias)
 		}
-		for _, r := range acct.Regions {
-			if r == "" {
-				return nil, fmt.Errorf("account %q: empty region ID", alias)
-			}
+		if slices.Contains(acct.Regions, "") {
+			return nil, fmt.Errorf("account %q: empty region ID", alias)
 		}
 	}
 	return &c, nil

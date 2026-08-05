@@ -67,7 +67,6 @@ func TestStore_RevokeRemoves(t *testing.T) {
 func newRouter(store *Store, public map[string]bool, protected http.HandlerFunc) http.Handler {
 	mux := http.NewServeMux()
 	for p := range public {
-		p := p
 		mux.HandleFunc(p, func(w http.ResponseWriter, r *http.Request) {
 			protected(w, r)
 		})
@@ -79,9 +78,9 @@ func newRouter(store *Store, public map[string]bool, protected http.HandlerFunc)
 func TestMiddleware_AllowsPublicPaths(t *testing.T) {
 	store := NewStore(false)
 	public := map[string]bool{
-		"/api/v1/ping":          true,
-		"/api/v1/stats":         true,
-		"/api/v1/auth/login":    true,
+		"/api/v1/ping":       true,
+		"/api/v1/stats":      true,
+		"/api/v1/auth/login": true,
 	}
 	cases := []struct{ method, path string }{
 		{http.MethodGet, "/api/v1/ping"},
@@ -221,11 +220,9 @@ func TestStore_ConcurrentIssueProducesUniqueIDs(t *testing.T) {
 	total := goroutines * perG
 	ids := make(chan string, total)
 	var wg sync.WaitGroup
-	for g := 0; g < goroutines; g++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := 0; i < perG; i++ {
+	for range goroutines {
+		wg.Go(func() {
+			for range perG {
 				s, err := store.Issue("user")
 				if err != nil {
 					t.Errorf("issue failed: %v", err)
@@ -233,7 +230,7 @@ func TestStore_ConcurrentIssueProducesUniqueIDs(t *testing.T) {
 				}
 				ids <- s.ID
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	close(ids)
@@ -253,7 +250,7 @@ func TestStore_ConcurrentGetAndRevoke(t *testing.T) {
 	store := NewStore(false)
 	const N = 1000
 	ids := make([]string, N)
-	for i := 0; i < N; i++ {
+	for i := range N {
 		s, err := store.Issue("user")
 		if err != nil {
 			t.Fatalf("issue failed: %v", err)
@@ -262,11 +259,11 @@ func TestStore_ConcurrentGetAndRevoke(t *testing.T) {
 	}
 	const iters = 5000
 	var wg sync.WaitGroup
-	for r := 0; r < 4; r++ {
+	for r := range 4 {
 		wg.Add(1)
 		go func(seed int) {
 			defer wg.Done()
-			for i := 0; i < iters; i++ {
+			for i := range iters {
 				id := ids[(seed*1337+i)%N]
 				sess, ok := store.Get(id)
 				if !ok {
@@ -279,11 +276,11 @@ func TestStore_ConcurrentGetAndRevoke(t *testing.T) {
 			}
 		}(r)
 	}
-	for w := 0; w < 4; w++ {
+	for w := range 4 {
 		wg.Add(1)
 		go func(seed int) {
 			defer wg.Done()
-			for i := 0; i < iters; i++ {
+			for i := range iters {
 				store.Revoke(ids[(seed*997+i)%N])
 			}
 		}(w)
@@ -309,7 +306,7 @@ func TestStore_ConcurrentReadMostly(t *testing.T) {
 	const N = 100
 	const readerLoops = 100
 	ids := make([]string, N)
-	for i := 0; i < N; i++ {
+	for i := range N {
 		s, err := store.Issue("user")
 		if err != nil {
 			t.Fatalf("issue failed: %v", err)
@@ -317,11 +314,9 @@ func TestStore_ConcurrentReadMostly(t *testing.T) {
 		ids[i] = s.ID
 	}
 	var wg sync.WaitGroup
-	for r := 0; r < 10; r++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := 0; i < readerLoops; i++ {
+	for range 10 {
+		wg.Go(func() {
+			for range readerLoops {
 				for _, id := range ids {
 					sess, ok := store.Get(id)
 					if !ok {
@@ -333,19 +328,17 @@ func TestStore_ConcurrentReadMostly(t *testing.T) {
 					}
 				}
 			}
-		}()
+		})
 	}
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for i := 0; i < 500; i++ {
+	wg.Go(func() {
+		for i := range 500 {
 			store.Revoke(ids[i%N])
 			if _, err := store.Issue("user"); err != nil {
 				t.Errorf("writer issue failed: %v", err)
 				return
 			}
 		}
-	}()
+	})
 	wg.Wait()
 }
 
@@ -354,7 +347,7 @@ func TestStore_ConcurrentReadMostly(t *testing.T) {
 // valid fields. A torn read would show zero User / zero CreatedAt / ID mismatch.
 func TestStore_RevokeDuringGet(t *testing.T) {
 	store := NewStore(false)
-	for iter := 0; iter < 10000; iter++ {
+	for iter := range 10000 {
 		issued, err := store.Issue("alice")
 		if err != nil {
 			t.Fatalf("iter %d: issue failed: %v", iter, err)
@@ -401,11 +394,9 @@ func TestStore_HighContentionCSRFUniqueness(t *testing.T) {
 	const perG = total / goroutines
 	csrfCh := make(chan string, total)
 	var wg sync.WaitGroup
-	for g := 0; g < goroutines; g++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := 0; i < perG; i++ {
+	for range goroutines {
+		wg.Go(func() {
+			for range perG {
 				s, err := store.Issue("user")
 				if err != nil {
 					t.Errorf("issue failed: %v", err)
@@ -413,7 +404,7 @@ func TestStore_HighContentionCSRFUniqueness(t *testing.T) {
 				}
 				csrfCh <- s.CSRF
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	close(csrfCh)

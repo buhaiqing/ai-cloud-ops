@@ -9,7 +9,8 @@ import (
 // concurrent calls for the same key into one execution.
 //
 // API matches the parts of x/sync/singleflight we need:
-//   Do(key string, fn func() (interface{}, error)) (v interface{}, err error, shared bool)
+//
+//	Do(key string, fn func() (interface{}, error)) (v interface{}, err error, shared bool)
 type singleflight struct {
 	mu sync.Mutex
 	m  map[string]*sfCall
@@ -17,11 +18,11 @@ type singleflight struct {
 
 type sfCall struct {
 	wg  sync.WaitGroup
-	val interface{}
+	val any
 	err error
 }
 
-func (g *singleflight) Do(key string, fn func() (interface{}, error)) (interface{}, error, bool) {
+func (g *singleflight) Do(key string, fn func() (any, error)) (any, error, bool) {
 	g.mu.Lock()
 	if g.m == nil {
 		g.m = make(map[string]*sfCall)

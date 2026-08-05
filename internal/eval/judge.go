@@ -126,11 +126,11 @@ func (j *Judge) Score(ctx context.Context, alert map[string]any, diagnosis *agen
 func buildUserPrompt(alert map[string]any, d *agent.Diagnosis) string {
 	alertJSON, err := json.MarshalIndent(alert, "", "  ")
 	if err != nil {
-		alertJSON = []byte(fmt.Sprintf("%v", alert))
+		alertJSON = fmt.Appendf(nil, "%v", alert)
 	}
 	diagJSON, err := json.MarshalIndent(d, "", "  ")
 	if err != nil {
-		diagJSON = []byte(fmt.Sprintf("%v", d))
+		diagJSON = fmt.Appendf(nil, "%v", d)
 	}
 	return fmt.Sprintf("Alert:\n%s\n\nAI Diagnosis:\n%s", alertJSON, diagJSON)
 }

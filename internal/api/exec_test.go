@@ -549,7 +549,7 @@ func TestExecExecute_FailedActionMarksFailed(t *testing.T) {
 func TestExecExecute_RateLimit_429(t *testing.T) {
 	t.Setenv("EXEC_RATE_LIMIT", "10")
 	store := newMemExecStore()
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		seedPlan(t, store, "approved", "main")
 		_ = store.BeginExecution(context.Background(), int64(i+1), nil)
 	}
@@ -739,15 +739,13 @@ func TestExecApprove_ConcurrentDoubleApprove(t *testing.T) {
 	const goroutines = 8
 	var wg sync.WaitGroup
 	codes := make(chan int, goroutines)
-	for i := 0; i < goroutines; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range goroutines {
+		wg.Go(func() {
 			rec := httptest.NewRecorder()
 			router.ServeHTTP(rec, authedRequest(t, authStore, http.MethodPost,
 				"/api/v1/exec/approve", `{"plan_id":1}`))
 			codes <- rec.Code
-		}()
+		})
 	}
 	wg.Wait()
 	close(codes)
